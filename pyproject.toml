@@ -11,11 +11,27 @@ requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "PCFC — Ports, Customs and Free Zone Corporation" }]
 keywords = ["hermes", "hermes-agent", "microsoft-teams", "voice", "cvi", "plugin"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Conferencing",
+  "Topic :: Multimedia :: Sound/Audio",
+]
 dependencies = [
   # Hermes Agent itself is the host runtime (not on PyPI — install via its own
   # installer into the SAME environment). These are the only extra runtime deps.
   "aiohttp>=3.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alaamh/hermes-plugin-teams-voice"
+Repository = "https://github.com/alaamh/hermes-plugin-teams-voice"
+Issues = "https://github.com/alaamh/hermes-plugin-teams-voice/issues"
 
 [project.optional-dependencies]
 # Faster audio resampling (pure-Python fallback is used when absent).
