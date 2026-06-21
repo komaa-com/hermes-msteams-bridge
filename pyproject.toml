@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-plugin-teams-voice"
+version = "0.1.0"
+description = "Microsoft Teams voice/video (Conversational Video Interface) plugin for Hermes Agent"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "PCFC — Ports, Customs and Free Zone Corporation" }]
+keywords = ["hermes", "hermes-agent", "microsoft-teams", "voice", "cvi", "plugin"]
+dependencies = [
+  # Hermes Agent itself is the host runtime (not on PyPI — install via its own
+  # installer into the SAME environment). These are the only extra runtime deps.
+  "aiohttp>=3.8",
+]
+
+[project.optional-dependencies]
+# Faster audio resampling (pure-Python fallback is used when absent).
+numpy = ["numpy>=1.21"]
+
+# Hermes discovers the plugin through this entry-point group. The key (teams_voice)
+# is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
+# value is the import package whose register(ctx) Hermes calls.
+[project.entry-points."hermes_agent.plugins"]
+teams_voice = "hermes_teams_voice"
+
+[tool.setuptools.packages.find]
+include = ["hermes_teams_voice*"]
+
+[tool.setuptools.package-data]
+hermes_teams_voice = ["plugin.yaml"]
