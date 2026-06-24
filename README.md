@@ -2,6 +2,8 @@
 
 [![PyPI](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
 [![Python](https://img.shields.io/pypi/pyversions/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
+[![CI](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-komaa.com-1f8acb.svg)](https://docs.komaa.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Agent**,
@@ -13,6 +15,8 @@ a media worker dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
+
+> 📖 **Full setup, configuration & reference:** **https://docs.komaa.com/**
 
 ## Install on Hermes
 
@@ -152,4 +156,4 @@ also keep a bundled `teams_voice` (same name → the entry-point would shadow it
 
 ## License
 
-MIT (matches Hermes Agent). Created by Alaaeldin Elhenawy — Dubai, UAE.
+MIT — see [LICENSE](LICENSE). Maintained by **[Komaa.com](https://komaa.com)** · docs at **https://docs.komaa.com/**
