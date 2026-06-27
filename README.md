@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Agent**,
-packaged as a standalone, pip-installable plugin — install it *on top of* a normal
+packaged as a standalone, pip-installable plugin: install it *on top of* a normal
 Hermes install, no fork required.
 
 The plugin (name **`teams_voice`**) hosts the HMAC-authenticated WebSocket bridge that
@@ -20,26 +20,34 @@ bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
 
 ## Install on Hermes
 
-Install into the **same Python environment as Hermes** — it discovers the plugin via
-the `hermes_agent.plugins` entry-point and imports it in-process. Target the python
-that runs `hermes` (Linux/macOS `…/venv/bin/python`, Windows `…\venv\Scripts\python.exe`),
-or activate that venv first and drop `--python`.
+Install into the **same Python environment as Hermes**: it discovers the plugin via
+the `hermes_agent.plugins` entry-point and imports it in-process.
 
-**A — from PyPI (recommended):**
+First locate the Hermes venv (the installer puts it under `~/.hermes/.../venv`):
+
+```bash
+find ~ -path "*/.hermes/*/venv" -type d 2>/dev/null
+```
+
+Then install into that venv, targeting its interpreter (Linux/macOS
+`<venv>/bin/python`, Windows `<venv>\Scripts\python.exe`), or activate the venv
+first and drop `--python`.
+
+**A. from PyPI (recommended):**
 
 ```bash
 uv pip install --python /path/to/hermes/venv/bin/python hermes-plugin-teams-voice
 # or, with the Hermes venv activated:  pip install hermes-plugin-teams-voice
 ```
 
-**B — from GitHub (latest / pre-release):**
+**B. from GitHub (latest / pre-release):**
 
 ```bash
 uv pip install --python /path/to/hermes/venv/bin/python \
   "git+https://github.com/komaa-com/hermes-plugin-teams-voice.git"
 ```
 
-**C — from a local checkout (development):**
+**C. from a local checkout (development):**
 
 ```bash
 git clone https://github.com/komaa-com/hermes-plugin-teams-voice.git
@@ -53,7 +61,7 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-plugin-teams
 
 Entry-point plugins are **opt-in**: add `teams_voice` to `plugins.enabled` in
 **`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
-does **not** work for pip-installed plugins — it only sees bundled/user-dir plugins —
+does **not** work for pip-installed plugins (it only sees bundled/user-dir plugins),
 so enable it in config:
 
 ```yaml
@@ -74,7 +82,7 @@ hermes gateway run                             # (separately) the Teams chat pla
 Config lives in Hermes's own files (this package ships none). Non-secret settings go
 in **`config.yaml`**; secrets go in **`.env`** and are referenced with `${VAR}`.
 
-**`~/.hermes/config.yaml`** — under `plugins.entries.teams_voice.config`:
+**`~/.hermes/config.yaml`**, under `plugins.entries.teams_voice.config`:
 
 ```yaml
 plugins:
@@ -90,7 +98,7 @@ plugins:
         meeting_recap: true                # optional: post minutes at call end
         allowlist: []                      # optional: caller AAD object ids (empty = allow all)
         session_scope: per-call            # per-call | per-thread | per-aad
-        # Realtime (speech-to-speech) brain — Azure OpenAI Realtime:
+        # Realtime (speech-to-speech) brain - Azure OpenAI Realtime:
         realtime:
           backend: azure                   # azure | openai
           azure_endpoint: https://<your-azure-resource>.cognitiveservices.azure.com
@@ -108,7 +116,7 @@ plugins:
 > **Streaming** (STT→agent→TTS) instead of realtime: omit the `realtime:` block and run
 > `hermes teams-voice serve --handler streaming` (needs `ffmpeg` on PATH).
 
-**`~/.hermes/.env`** — the secrets referenced above (plus Teams chat-plane creds if you
+**`~/.hermes/.env`**, the secrets referenced above (plus Teams chat-plane creds if you
 also run `hermes gateway run`):
 
 ```bash
@@ -117,7 +125,7 @@ TEAMS_VOICE_SHARED_SECRET=<same value as the media worker's shared secret>
 AZURE_FOUNDRY_API_KEY=<azure-openai-key>                 # or OPENAI_API_KEY for public OpenAI
 TEAMS_SHAREPOINT_SITE_ID=<host>,<siteGuid>,<webGuid>     # optional (needs Graph Sites.ReadWrite.All)
 
-# Teams chat plane (platforms/teams) — only if you run the gateway:
+# Teams chat plane (platforms/teams) - only if you run the gateway:
 TEAMS_CLIENT_ID=<bot-app-id>
 TEAMS_CLIENT_SECRET=<bot-app-secret>
 TEAMS_TENANT_ID=<azure-ad-tenant-id>
@@ -144,9 +152,10 @@ package exposes:
 teams_voice = "hermes_teams_voice"
 ```
 
-Hermes imports `hermes_teams_voice` and calls its `register(ctx)` — registering the
+Hermes imports `hermes_teams_voice` and calls its `register(ctx)`, registering the
 `teams-voice` CLI, the status tool, and the session hook. Entry-point plugins are
-opt-in, so `teams_voice` must be in `plugins.enabled` (`hermes plugins enable` does this).
+opt-in, so `teams_voice` must be in `plugins.enabled` (add it in `config.yaml`;
+`hermes plugins enable` does not see pip-installed plugins).
 
 ## Requirements
 
@@ -167,4 +176,4 @@ also keep a bundled `teams_voice` (same name → the entry-point would shadow it
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Maintained by **[Komaa.com](https://komaa.com)** · docs at **https://docs.komaa.com/**
+MIT - see [LICENSE](LICENSE). Maintained by **[Komaa.com](https://komaa.com)** · docs at **https://docs.komaa.com/**
