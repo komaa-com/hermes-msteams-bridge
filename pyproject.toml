@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-plugin-teams-voice"
-version = "0.1.1"
+version = "0.1.2"
 description = "Microsoft Teams voice/video (Conversational Video Interface) plugin for Hermes Agent"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,6 +46,7 @@ teams_voice = "hermes_teams_voice"
 
 [tool.setuptools.packages.find]
 include = ["hermes_teams_voice*"]
+exclude = ["hermes_teams_voice.tests*"]
 
 [tool.setuptools.package-data]
 hermes_teams_voice = ["plugin.yaml"]

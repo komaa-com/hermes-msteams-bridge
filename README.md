@@ -51,9 +51,20 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-plugin-teams
 
 ## Enable + run
 
+Entry-point plugins are **opt-in**: add `teams_voice` to `plugins.enabled` in
+**`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
+does **not** work for pip-installed plugins — it only sees bundled/user-dir plugins —
+so enable it in config:
+
+```yaml
+plugins:
+  enabled:
+    - teams_voice
+```
+
+Then run:
+
 ```bash
-hermes plugins list                            # confirm: teams_voice   (source: entrypoint)
-hermes plugins enable teams_voice              # entry-point plugins are opt-in
 hermes teams-voice serve --handler realtime    # voice bridge; also: streaming | echo | logging
 hermes gateway run                             # (separately) the Teams chat plane + cron
 ```
