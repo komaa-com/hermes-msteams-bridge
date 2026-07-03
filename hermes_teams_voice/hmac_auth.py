@@ -42,7 +42,10 @@ class ReplayGuard:
     _seen: dict[str, int] = field(default_factory=dict)  # key -> expiry epoch ms
 
     def _prune(self, now_ms: int) -> None:
-        expired = [k for k, exp in self._seen.items() if exp <= now_ms]
+        # Strict `<`, not `<=`: the window check in verify_upgrade accepts up to and INCLUDING ts+window_ms, so the
+        # replay entry (expiry = ts+window_ms) must survive that exact instant or a captured handshake is replayable
+        # in a 1ms boundary gap. Prune only once strictly past the horizon.
+        expired = [k for k, exp in self._seen.items() if exp < now_ms]
         for k in expired:
             del self._seen[k]
 

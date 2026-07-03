@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
   # Hermes Agent itself is the host runtime (not on PyPI — install via its own
   # installer into the SAME environment). These are the only extra runtime deps.
-  "aiohttp>=3.8",
+  "aiohttp>=3.10",  # pre-auth HTTP/WS server: floor raised off 3.8 (request-smuggling / parser / static-route CVEs fixed by 3.9.2/3.9.4)
 ]
 
 [project.urls]
