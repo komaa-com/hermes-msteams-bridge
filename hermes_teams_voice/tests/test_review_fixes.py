@@ -16,9 +16,14 @@ from hermes_teams_voice.realtime.openai_client import RealtimeConfig, RealtimeSe
 # ── allowlist (AAD-only by default) ──────────────────────────────────────────
 
 
-def test_allowlist_empty_allows_all():
+def test_allowlist_empty_denies_by_default():
     cfg = resolve_config(extra={"shared_secret": "s"})
-    assert caller_allowed(cfg, "anyone", "Anyone")
+    assert not caller_allowed(cfg, "anyone", "Anyone")  # deny-by-default
+
+
+def test_allowlist_empty_allow_all_opt_in():
+    cfg = resolve_config(extra={"shared_secret": "s", "allow_all": True})
+    assert caller_allowed(cfg, "anyone", "Anyone")  # explicit opt-in only
 
 
 def test_allowlist_matches_aad_not_name_by_default():

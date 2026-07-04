@@ -116,7 +116,8 @@ plugins:
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: attach files/minutes to the chat
         meeting_recap: true                # optional: post minutes at call end
-        allowlist: []                      # optional: caller AAD object ids (empty = allow all)
+        allowlist: []                      # caller AAD object ids (empty = deny all inbound callers)
+        allow_all: false                   # explicit opt-in: accept any caller when the allowlist is empty
         session_scope: per-call            # per-call | per-thread | per-aad
         # Realtime (speech-to-speech) brain - Azure OpenAI Realtime:
         realtime:

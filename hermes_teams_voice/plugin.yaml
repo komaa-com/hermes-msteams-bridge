@@ -1,5 +1,5 @@
 name: teams_voice
-version: 0.1.0
+version: 0.1.3
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
   HMAC-authenticated WebSocket the companion .NET media worker dials into, then drives dialogue (realtime speech-to-speech or
@@ -8,7 +8,7 @@ description: >-
   worker renders; this plugin sends the drivers. Chat-plane integration
   (messages, message actions, recap posting) is handled by the existing
   ``platforms/teams`` adapter, not here.
-author: NousResearch
+author: Komaa
 kind: standalone
 # Pure-Python driver: runs anywhere Hermes runs (the *media worker* it pairs with
 # is Windows-only, but it is a separate process reached over the WebSocket).
@@ -25,7 +25,9 @@ optional_env:
   - name: TEAMS_VOICE_PORT
     description: "Port for the bridge WebSocket server (default 8443)."
   - name: TEAMS_VOICE_ALLOWLIST
-    description: "Comma-separated caller AAD object ids allowed to call (empty = allow all)."
+    description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless TEAMS_VOICE_ALLOW_ALL is set)."
+  - name: TEAMS_VOICE_ALLOW_ALL
+    description: "Explicit opt-in to accept any inbound caller when the allowlist is empty (default false = deny)."
   - name: TEAMS_VOICE_WAKE_PHRASES
     description: "Comma-separated group-call wake phrases (default: assistant,hermes)."
   - name: TEAMS_VOICE_MEETING_RECAP

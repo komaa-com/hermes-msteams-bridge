@@ -426,6 +426,7 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             asyncio.create_task(
                 meeting.post_minutes(self._consult, self._meeting, self._thread_id)
             )
+        self._vision.clear()
 
     async def on_audio_frame(self, session: CallSession, msg: protocol.AudioFrame) -> None:
         if (self._require_recording and not session.recording_active) or self._processing:

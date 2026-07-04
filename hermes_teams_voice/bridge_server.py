@@ -18,7 +18,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
-from aiohttp import WSMsgType, web
+from aiohttp import WSCloseCode, WSMsgType, web
 
 from . import hmac_auth, protocol
 from .config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig, resolve_config
@@ -41,6 +41,11 @@ class CallSession:
         self._ws = ws
         self.recording_active = False
         self.human_count = 0
+        # Lifecycle flags: ``started`` turns off the pre-start timeout;
+        # ``ended`` marks that handler teardown already ran (idempotence guard
+        # between an explicit session.end and the abrupt-close fallback).
+        self.started = False
+        self.ended = False
 
     @property
     def closed(self) -> bool:
@@ -124,6 +129,7 @@ class BridgeServer:
         self._runner: Optional[web.AppRunner] = None
         self._conn_count = 0
         self._conn_by_ip: dict[str, int] = {}
+        self._live: dict[str, CallSession] = {}  # callId → connected session
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -137,7 +143,7 @@ class BridgeServer:
         app = web.Application()
         route = f"{self.config.path.rstrip('/')}/{{call_id}}"
         app.router.add_get(route, self._handle_ws)
-        app.router.add_get("/health", lambda _req: web.Response(text="ok"))
+        app.router.add_get("/health", self._handle_health)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()
@@ -154,6 +160,9 @@ class BridgeServer:
             self._runner = None
 
     # ── connection handling ──────────────────────────────────────────────────
+
+    async def _handle_health(self, _request: web.Request) -> web.Response:
+        return web.Response(text="ok")
 
     async def _handle_ws(self, request: web.Request) -> web.StreamResponse:
         call_id = request.match_info.get("call_id", "").strip()
@@ -181,58 +190,96 @@ class BridgeServer:
         ws = web.WebSocketResponse(max_msg_size=_MAX_FRAME_BYTES, heartbeat=None)
         await ws.prepare(request)
 
+        # Same callId already connected — close the NEW socket to avoid
+        # clobbering the live call (mirrors the TS driver's duplicate guard).
+        if call_id in self._live:
+            logger.warning("[teams_voice] rejected duplicate connection for %s", call_id)
+            await ws.close(code=WSCloseCode.POLICY_VIOLATION, message=b"duplicate-callId")
+            return ws
+
         self._conn_count += 1
         self._conn_by_ip[peer_ip] = self._conn_by_ip.get(peer_ip, 0) + 1
         session = CallSession(call_id, ws)
+        self._live[call_id] = session
         handler = self._handler_factory()
         try:
             await self._read_loop(session, handler)
         finally:
+            self._live.pop(call_id, None)
             self._conn_count -= 1
             self._conn_by_ip[peer_ip] = max(0, self._conn_by_ip.get(peer_ip, 1) - 1)
             logger.debug("[teams_voice] connection closed %s", call_id)
         return ws
 
     async def _read_loop(self, session: CallSession, handler: CallSessionHandler) -> None:
-        started = False
-        while not session.closed:
-            timeout = None if started else self.config.pre_start_timeout_s
-            try:
-                msg = await asyncio.wait_for(session._ws.receive(), timeout=timeout)
-            except asyncio.TimeoutError:
-                logger.warning("[teams_voice] no session.start within %ss; closing %s",
-                               timeout, session.call_id)
-                await session._ws.close()
-                return
+        try:
+            while not session.closed:
+                timeout = None if session.started else self.config.pre_start_timeout_s
+                try:
+                    msg = await asyncio.wait_for(session._ws.receive(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    logger.warning("[teams_voice] no session.start within %ss; closing %s",
+                                   timeout, session.call_id)
+                    await session._ws.close()
+                    return
 
-            if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
-                return
-            if msg.type is not WSMsgType.TEXT:
-                continue
+                if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED, WSMsgType.ERROR):
+                    return
+                if msg.type is not WSMsgType.TEXT:
+                    continue
 
-            try:
-                parsed = protocol.decode(msg.data)
-            except protocol.ProtocolError as exc:
-                logger.warning("[teams_voice] bad frame on %s: %s", session.call_id, exc)
-                continue
+                try:
+                    parsed = protocol.decode(msg.data)
+                except protocol.ProtocolError as exc:
+                    logger.warning("[teams_voice] bad frame on %s: %s", session.call_id, exc)
+                    continue
 
-            started = await self._dispatch(session, handler, parsed) or started
+                await self._dispatch(session, handler, parsed)
+        finally:
+            # An abrupt socket close (worker crash, network loss, hangup without
+            # a session.end frame) must still run the handler teardown for a
+            # session that already started — otherwise realtime sockets and
+            # ambient tasks leak. ``ended`` keeps this idempotent with an
+            # explicit session.end.
+            if session.started and not session.ended:
+                session.ended = True
+                try:
+                    await handler.on_session_end(
+                        session, protocol.SessionEnd(type=protocol.TYPE_SESSION_END, reason="socket-closed")
+                    )
+                except Exception:  # noqa: BLE001 — teardown is best-effort
+                    logger.error(
+                        "[teams_voice] teardown error on abrupt close of %s",
+                        session.call_id, exc_info=True,
+                    )
 
     async def _dispatch(
         self,
         session: CallSession,
         handler: CallSessionHandler,
         parsed: protocol.InboundMessage,
-    ) -> bool:
-        """Route one parsed frame to the handler. Returns True once started."""
+    ) -> None:
+        """Route one parsed frame to the handler."""
         try:
             if isinstance(parsed, protocol.Ping):
                 await session._send(protocol.pong(parsed.ts))
-                return False
+                return
             if isinstance(parsed, protocol.SessionStart):
+                # The callId is authenticated via HMAC in the URL path; a
+                # session.start body claiming a different callId must be
+                # rejected, otherwise the call record and the send/close paths
+                # would key off different ids.
+                if parsed.call_id != session.call_id:
+                    logger.warning(
+                        "[teams_voice] session.start callId mismatch (authenticated=%s payload=%s); closing",
+                        session.call_id, parsed.call_id,
+                    )
+                    await session._ws.close()
+                    return
+                session.started = True
                 session.recording_active = parsed.recording_status == "active"
                 await handler.on_session_start(session, parsed)
-                return True
+                return
             if isinstance(parsed, protocol.AudioFrame):
                 await handler.on_audio_frame(session, parsed)
             elif isinstance(parsed, protocol.VideoFrame):
@@ -244,6 +291,7 @@ class BridgeServer:
             elif isinstance(parsed, protocol.Dtmf):
                 await handler.on_dtmf(session, parsed)
             elif isinstance(parsed, protocol.SessionEnd):
+                session.ended = True  # explicit end: skip the abrupt-close fallback
                 await handler.on_session_end(session, parsed)
                 await session._ws.close()
         except Exception:  # noqa: BLE001 — a handler fault must not kill the call
@@ -251,7 +299,6 @@ class BridgeServer:
                 "[teams_voice] handler error on %s frame=%s",
                 session.call_id, getattr(parsed, "type", "?"), exc_info=True,
             )
-        return False
 
 
 async def _amain() -> None:
