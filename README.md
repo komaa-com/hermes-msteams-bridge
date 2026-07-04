@@ -11,12 +11,32 @@ packaged as a standalone, pip-installable plugin: install it *on top of* a norma
 Hermes install, no fork required.
 
 The plugin (name **`teams_voice`**) hosts the HMAC-authenticated WebSocket bridge that
-a media worker dials into, and drives the call: realtime (OpenAI/Azure
+the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
 
 > 📖 **Full setup, configuration & reference:** **https://docs.komaa.com/**
+
+## Getting started
+
+This plugin adds **voice and video (CVI)** on top of Hermes Agent's Microsoft Teams
+**messaging**. Set those up first:
+
+1. **Install Hermes Agent** using the official docs at
+   [hermes-agent.nousresearch.com](https://hermes-agent.nousresearch.com/docs).
+2. **Set up Microsoft Teams messaging** in Hermes (bot app + credentials):
+   [Teams messaging docs](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/teams).
+3. **Subscribe to StandIn** ([standin.komaa.com](https://standin.komaa.com), free tier), the hosted
+   media bridge that joins the Teams call and connects to this plugin.
+4. **Add this plugin.** The one-line installer detects your Hermes venv and walks you through the
+   config (mode, shared secret, provider key):
+
+   ```bash
+   curl -fsSL https://standin.komaa.com/install.sh | bash
+   ```
+
+   Prefer to do it by hand? See [Install on Hermes](#install-on-hermes) and [Configure](#configure).
 
 ## Install on Hermes
 
@@ -91,9 +111,9 @@ plugins:
   entries:
     teams_voice:
       config:
-        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # MUST byte-match the worker's secret
+        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # MUST match the secret set in StandIn
         host: 127.0.0.1
-        port: 8443                         # voice WS the worker dials: ws://host:port/voice/msteams/stream
+        port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: attach files/minutes to the chat
         meeting_recap: true                # optional: post minutes at call end
         allowlist: []                      # optional: caller AAD object ids (empty = allow all)
@@ -121,7 +141,7 @@ also run `hermes gateway run`):
 
 ```bash
 # Voice bridge
-TEAMS_VOICE_SHARED_SECRET=<same value as the media worker's shared secret>
+TEAMS_VOICE_SHARED_SECRET=<same value you set in StandIn>
 AZURE_FOUNDRY_API_KEY=<azure-openai-key>                 # or OPENAI_API_KEY for public OpenAI
 TEAMS_SHAREPOINT_SITE_ID=<host>,<siteGuid>,<webGuid>     # optional (needs Graph Sites.ReadWrite.All)
 
@@ -131,7 +151,7 @@ TEAMS_CLIENT_SECRET=<bot-app-secret>
 TEAMS_TENANT_ID=<azure-ad-tenant-id>
 ```
 
-`shared_secret` **must byte-match** the media worker's shared secret or the HMAC
+`shared_secret` **must match** the secret set in StandIn or the HMAC
 handshake fails. Full key reference (every option, streaming mode, DLP/audit, the
 required Microsoft Graph permissions): [`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
 
@@ -161,7 +181,7 @@ opt-in, so `teams_voice` must be in `plugins.enabled` (add it in `config.yaml`;
 
 - A working **Hermes Agent** install (the host; not a PyPI package).
 - Python ≥ 3.10 and `aiohttp`; `ffmpeg` on PATH for streaming-mode TTS decode.
-- A media worker that bridges the live Teams call audio/video into this plugin over the HMAC WebSocket (open-source, separate repo).
+- **StandIn** ([standin.komaa.com](https://standin.komaa.com)), the hosted media bridge that joins the Teams call and connects to this plugin over the HMAC WebSocket.
 
 ## Relationship to the bundled plugin
 
