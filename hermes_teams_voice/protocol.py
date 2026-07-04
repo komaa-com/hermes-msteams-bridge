@@ -1,21 +1,23 @@
-"""Bridge wire protocol — Python mirror of the .NET worker's ``Protocol.cs``.
+"""Bridge wire protocol - GENERATED from protocol/schema.yaml - do not hand-edit.
 
-The companion .NET media worker and this driver exchange
-newline-free JSON text frames over one WebSocket per call, discriminated on a
-``type`` field, camelCase keys. This module models the **inbound** messages
-(worker -> gateway) as dataclasses with a single :func:`decode` entry point, and
-provides **outbound** builders (gateway -> worker).
+Python mirror of the .NET worker's ``Protocol.cs``. The companion .NET media
+worker and this driver exchange newline-free JSON text frames over one WebSocket
+per call, discriminated on a ``type`` field, camelCase keys. This module models
+the **inbound** messages (worker -> gateway) as dataclasses with a single
+:func:`decode` entry point, and provides **outbound** builders (gateway ->
+worker).
 
-The contract is fixed by the existing worker; keep field names camelCase and
-additive — unknown fields are ignored and unknown message types degrade
-gracefully (older/newer peers interoperate). See ``Protocol.cs`` for the
-authoritative C# records.
+The contract is fixed by protocol/schema.yaml in the OpenClawBridge repo (the
+worker is the wire behavior of record); keep field names camelCase and additive
+- unknown fields are ignored and unknown message types degrade gracefully
+(older/newer peers interoperate). Regenerate with: python3 protocol/generate.py
+(in the OpenClawBridge repo).
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 # ── Message type discriminators ──────────────────────────────────────────────
@@ -31,10 +33,10 @@ TYPE_DTMF = "dtmf"
 TYPE_PING = "ping"
 
 # Outbound: gateway -> worker
+TYPE_ASSISTANT_CANCEL = "assistant.cancel"
 TYPE_EXPRESSION = "expression"
 TYPE_SPEECH_MARKS = "speech.marks"
 TYPE_DISPLAY_IMAGE = "display.image"
-TYPE_ASSISTANT_CANCEL = "assistant.cancel"
 TYPE_PONG = "pong"
 
 
@@ -95,7 +97,7 @@ class AudioFrame:
     seq: int
     timestamp_ms: int
     payload_base64: str
-    speaker_name: Optional[str] = None  # unmixed-audio attribution (additive)
+    speaker_name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -114,7 +116,7 @@ class VideoFrame:
 @dataclass(frozen=True)
 class Participants:
     type: str
-    count: int  # human participants, excludes the bot
+    count: int
 
 
 @dataclass(frozen=True)
@@ -145,8 +147,8 @@ def decode(raw: str | bytes) -> InboundMessage:
     """Parse one inbound text frame into a typed message.
 
     Raises :class:`ProtocolError` on malformed JSON, a missing/blank ``type``,
-    or a required field missing for a known type. An unknown ``type`` also raises
-    so the caller can log-and-skip without crashing the read loop.
+    or a required field missing for a known type. An unknown ``type`` also
+    raises so the caller can log-and-skip without crashing the read loop.
     """
     if isinstance(raw, (bytes, bytearray)):
         raw = raw.decode("utf-8")
@@ -220,6 +222,11 @@ def audio_frame(seq: int, timestamp_ms: int, payload_base64: str) -> dict[str, A
     }
 
 
+def assistant_cancel(turn_id: int) -> dict[str, Any]:
+    """Barge-in - tell the worker to flush playback for ``turn_id``."""
+    return {"type": TYPE_ASSISTANT_CANCEL, "turnId": turn_id}
+
+
 def expression(emotion: str) -> dict[str, Any]:
     """Avatar emotion cue. Best-effort/cosmetic; older worker ignores it."""
     return {"type": TYPE_EXPRESSION, "emotion": emotion}
@@ -235,11 +242,11 @@ def display_image(
     mime: str,
     *,
     duration_ms: int | None = None,
-    mode: str | None = None,  # "fullscreen" (default) | "overlay" (PiP)
+    mode: str | None = None,
     caption: str | None = None,
     ts: int = 0,
 ) -> dict[str, Any]:
-    """``show_to_caller`` — render an image on the bot's tile, then return to avatar."""
+    """``show_to_caller`` - render an image on the bot's tile, then return to avatar."""
     msg: dict[str, Any] = {
         "type": TYPE_DISPLAY_IMAGE,
         "dataBase64": data_base64,
@@ -253,11 +260,6 @@ def display_image(
     if caption is not None:
         msg["caption"] = caption
     return msg
-
-
-def assistant_cancel(turn_id: int) -> dict[str, Any]:
-    """Barge-in — tell the worker to flush playback for ``turn_id``."""
-    return {"type": TYPE_ASSISTANT_CANCEL, "turnId": turn_id}
 
 
 def pong(ts: int) -> dict[str, Any]:
