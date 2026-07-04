@@ -176,4 +176,6 @@ also keep a bundled `teams_voice` (same name → the entry-point would shadow it
 
 ## License
 
-MIT - see [LICENSE](LICENSE). Maintained by **[Komaa.com](https://komaa.com)** · docs at **https://docs.komaa.com/**
+MIT - see [LICENSE](LICENSE). Copyright (c) 2026 Komaa.com. This is an independent plugin authored by Komaa; it is
+not affiliated with or endorsed by Nous Research. "Hermes" is a project of Nous Research. Maintained by
+**[Komaa.com](https://komaa.com)** · docs at **https://docs.komaa.com/**
