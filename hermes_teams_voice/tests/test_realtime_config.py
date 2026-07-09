@@ -29,7 +29,7 @@ def _clean_env(monkeypatch):
 
 def test_azure_builds_proven_url(monkeypatch):
     monkeypatch.setenv("TEAMS_VOICE_REALTIME_BACKEND", "azure")
-    monkeypatch.setenv("TEAMS_VOICE_AZURE_ENDPOINT", "https://pcfcaoai2.cognitiveservices.azure.com")
+    monkeypatch.setenv("TEAMS_VOICE_AZURE_ENDPOINT", "https://my-resource.cognitiveservices.azure.com")
     monkeypatch.setenv("TEAMS_VOICE_AZURE_DEPLOYMENT", "gpt-realtime")
     monkeypatch.setenv("TEAMS_VOICE_AZURE_API_VERSION", "2025-04-01-preview")
     monkeypatch.setenv("TEAMS_VOICE_REALTIME_VOICE", "cedar")
@@ -41,7 +41,7 @@ def test_azure_builds_proven_url(monkeypatch):
     assert cfg.voice == "cedar"
     assert cfg.api_key == "k123"  # reused from AZURE_FOUNDRY_API_KEY
     assert cfg.base_url == (
-        "wss://pcfcaoai2.cognitiveservices.azure.com/openai/realtime"
+        "wss://my-resource.cognitiveservices.azure.com/openai/realtime"
         "?api-version=2025-04-01-preview&deployment=gpt-realtime"
     )
 
