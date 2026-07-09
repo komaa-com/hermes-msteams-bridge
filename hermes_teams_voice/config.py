@@ -46,6 +46,10 @@ class TeamsVoiceConfig:
     max_connections_per_ip: int = 8
     # A connection must send ``session.start`` within this window or it is reaped.
     pre_start_timeout_s: float = 10.0
+    # Hard bound on a single call's wall-clock duration, in seconds (0 = unlimited).
+    # Mirrors OpenClaw's maxDurationMs concept: a wedged/never-ending call is torn
+    # down once it exceeds this, so it can't run forever and leak a live socket.
+    max_call_duration_s: float = 0.0
     require_recording_status: bool = True
     # Outbound "call me back": the worker's loopback HTTP endpoint + default tenant.
     worker_base_url: str = "http://127.0.0.1:9440"
@@ -82,6 +86,13 @@ class TeamsVoiceConfig:
 def _coerce_int(value: Any, default: int) -> int:
     try:
         return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(str(value).strip())
     except (TypeError, ValueError):
         return default
 
@@ -156,6 +167,9 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     max_vision = _coerce_int(
         extra.get("max_vision_per_minute") or os.getenv("TEAMS_VOICE_MAX_VISION_PER_MINUTE", ""), 30
     )
+    max_call_duration_s = _coerce_float(
+        extra.get("max_call_duration_s") or os.getenv("TEAMS_VOICE_MAX_CALL_DURATION_S", ""), 0.0
+    )
     session_scope = (
         str(extra.get("session_scope") or "").strip()
         or os.getenv("TEAMS_VOICE_SESSION_SCOPE", "").strip()
@@ -177,6 +191,7 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         path=path,
         hmac_window_ms=window,
         require_recording_status=require_recording,
+        max_call_duration_s=max_call_duration_s,
         worker_base_url=worker_base_url,
         tenant_id=tenant_id,
         allowlist=allowlist,

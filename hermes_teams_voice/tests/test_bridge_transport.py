@@ -156,6 +156,28 @@ def test_explicit_session_end_skips_abrupt_close_fallback():
     asyncio.run(run())
 
 
+def test_max_call_duration_reaps_a_wedged_call():
+    async def run():
+        h = RecordingHandler()
+        cfg = _config(max_call_duration_s=0.3)  # short bound for the test
+        server, url = await _serve(lambda: h, config=cfg)
+        try:
+            async with aiohttp.ClientSession() as client:
+                ws = await client.ws_connect(f"{url}/c1", headers=_headers("c1"))
+                await ws.send_str(_start_frame("c1"))
+                await _wait_for(lambda: h.started)
+                # Send no further frames: the call is "wedged". The duration reaper
+                # must close it once it exceeds the bound (not wait for a hangup).
+                msg = await ws.receive(timeout=2)
+                assert msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED)
+            await _wait_for(lambda: h.ended)
+            assert h.ended == ["socket-closed"]  # teardown ran on the reap
+        finally:
+            await server.stop()
+
+    asyncio.run(run())
+
+
 def test_inbound_denied_by_default_at_bridge():
     async def run():
         cfg = _config()  # empty allowlist, allow_all off → deny everyone
