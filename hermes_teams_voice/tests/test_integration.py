@@ -99,6 +99,52 @@ def test_realtime_group_gate_manual_response_no_leak():
     # addressed turn → we explicitly create the response
     asyncio.run(h._on_input_transcript("aria, what do you think?"))
     assert h._rt.created == 1
+    # H10: the drop latched by the unaddressed turn must be cleared once we decide
+    # to answer — otherwise this reply's audio would be eaten (see next test).
+    assert h._drop_response is False
+
+
+def test_realtime_group_gate_addressed_reply_after_bystander_is_delivered():
+    """H10 regression: an unaddressed bystander turn must not swallow the FIRST
+    addressed reply that follows it.
+
+    Mechanism: the bystander turn sets _drop_response=True but creates no response,
+    so no response.done fires to reset it; the next addressed turn's audio would
+    then be dropped. The reply after a bystander turn must deliver real frames."""
+    from hermes_teams_voice.config import BYTES_PER_FRAME
+    from hermes_teams_voice.realtime.openai_client import REALTIME_SAMPLE_RATE_HZ
+
+    cfg = resolve_config(extra={"shared_secret": "s", "wake_phrases": ["aria"]})
+    h = handlers.RealtimeCallSessionHandler(RealtimeConfig(api_key="x"), bridge_config=cfg)
+    h._rt = FakeRealtime()
+
+    class CountingSession(FakeSession):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.frames = 0
+
+        async def send_audio_frame(self, *a):
+            self.frames += 1
+
+    sess = CountingSession(human_count=2)
+    h._session = sess
+    asyncio.run(h.on_participants(sess, protocol.Participants(type="participants", count=2)))
+
+    # 0.2s of model audio at the realtime rate → many full output frames once delivered.
+    pcm24 = b"\x00" * (REALTIME_SAMPLE_RATE_HZ * 2 // 5)
+
+    # 1) Unaddressed bystander turn: the reply it would produce must be DROPPED.
+    asyncio.run(h._on_input_transcript("just chatting with my colleague"))
+    assert h._drop_response is True
+    asyncio.run(h._on_model_audio(pcm24))
+    assert sess.frames == 0  # bystander audio suppressed
+
+    # 2) Addressed turn right after: its reply audio MUST be delivered (not 0 frames).
+    asyncio.run(h._on_input_transcript("aria, what do you think?"))
+    assert h._drop_response is False and h._rt.created == 1
+    asyncio.run(h._on_model_audio(pcm24))
+    assert sess.frames > 0  # the addressed reply is heard
+    assert len(pcm24) // 2 >= BYTES_PER_FRAME  # sanity: enough audio for >=1 frame
 
 
 def test_streaming_session_end_cancels_inflight_task():

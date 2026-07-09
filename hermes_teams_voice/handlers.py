@@ -321,6 +321,13 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         now = time.monotonic() * 1000.0
         _is_group, decision = self._group_decision(text, now)
         if decision.respond:
+            # We ARE answering this turn, so clear any drop latched by a prior
+            # unaddressed bystander turn. That turn set _drop_response=True but
+            # created no response, so no response.done ever fired to reset it;
+            # left latched, _on_model_audio would then eat THIS addressed reply's
+            # audio (until its own response.done). Reset here so the reply we
+            # intend to deliver is not silently dropped.
+            self._drop_response = False
             if decision.addressed:
                 self._last_addressed_ms = now
             # In manual mode (group, or 1:1 before participants is known) auto-
