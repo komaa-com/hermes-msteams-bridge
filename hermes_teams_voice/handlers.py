@@ -112,11 +112,17 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         rt.on_speech_started = self._on_barge_in
         rt.on_response_done = self._on_response_done
         rt.on_function_call = self._on_function_call
+        rt.on_error = self._on_realtime_error
+        rt.on_close = self._on_realtime_closed
         self._rt = rt
         try:
             await rt.connect()
-        except Exception:  # noqa: BLE001 — keep socket; worker shows neutral avatar
+        except Exception:  # noqa: BLE001 — provider unreachable at connect time
+            # Without a working realtime brain the caller would sit in silent dead
+            # air until they hang up. Mirror OpenClaw's closeCall(): tear the Teams
+            # call down cleanly instead. (on_session_end then closes rt.)
             logger.error("[teams_voice] realtime connect failed for %s", session.call_id, exc_info=True)
+            await self._close_call("realtime-connect-failed")
             return
         # Start in MANUAL response mode (auto-response off): until participants is
         # known, no auto-reply can leak in a meeting. We enable auto-response only
@@ -145,6 +151,32 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
                 "reply in that language, switch when they switch, and translate on request."
             )
         return " ".join(parts)
+
+    async def _close_call(self, reason: str) -> None:
+        """Tear the Teams call down (mirror OpenClaw's closeCall / closeReason).
+
+        Closes the worker session WebSocket so the caller isn't left in dead air on
+        a provider failure. The bridge read-loop then runs on_session_end teardown,
+        which closes the realtime session and cancels the ambient task. Best-effort
+        and idempotent: a second call on an already-closed socket is a no-op."""
+        session = self._session
+        if session is None or session.closed:
+            return
+        logger.info("[teams_voice] closing Teams call %s: %s", session.call_id, reason)
+        try:
+            await session._ws.close()
+        except Exception:  # noqa: BLE001 — teardown is best-effort
+            logger.debug("[teams_voice] error closing call ws for %s", session.call_id, exc_info=True)
+
+    async def _on_realtime_closed(self, reason: str = "provider-closed") -> None:
+        """The realtime provider dropped mid-call → end the Teams call cleanly."""
+        await self._close_call(f"realtime-{reason}")
+
+    async def _on_realtime_error(self, error: object) -> None:
+        """Provider 'error' event. The session already reset _response_active so the
+        next turn can speak; surface it here for observability / future recovery."""
+        logger.warning("[teams_voice] realtime provider error on %s: %s",
+                       self._session.call_id if self._session else "?", error)
 
     async def on_recording_status(self, session: CallSession, msg: protocol.RecordingStatus) -> None:
         await super().on_recording_status(session, msg)

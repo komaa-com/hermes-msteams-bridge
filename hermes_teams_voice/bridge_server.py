@@ -212,14 +212,31 @@ class BridgeServer:
         return ws
 
     async def _read_loop(self, session: CallSession, handler: CallSessionHandler) -> None:
+        loop = asyncio.get_event_loop()
+        deadline: float | None = None  # max-duration horizon, set once the call starts
         try:
             while not session.closed:
-                timeout = None if session.started else self.config.pre_start_timeout_s
+                if not session.started:
+                    timeout: float | None = self.config.pre_start_timeout_s
+                else:
+                    # Absolute wall-clock cap on the call (max_call_duration_s > 0):
+                    # a wedged call can't run forever and leak a live socket. The
+                    # deadline is fixed at session.start, so it fires regardless of
+                    # whether frames keep arriving.
+                    if deadline is None and self.config.max_call_duration_s > 0:
+                        deadline = loop.time() + self.config.max_call_duration_s
+                    timeout = (deadline - loop.time()) if deadline is not None else None
                 try:
                     msg = await asyncio.wait_for(session._ws.receive(), timeout=timeout)
                 except asyncio.TimeoutError:
-                    logger.warning("[teams_voice] no session.start within %ss; closing %s",
-                                   timeout, session.call_id)
+                    if not session.started:
+                        logger.warning("[teams_voice] no session.start within %ss; closing %s",
+                                       timeout, session.call_id)
+                    else:
+                        logger.warning(
+                            "[teams_voice] call %s exceeded max duration %ss; closing",
+                            session.call_id, self.config.max_call_duration_s,
+                        )
                     await session._ws.close()
                     return
 
