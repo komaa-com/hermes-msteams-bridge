@@ -187,6 +187,7 @@ class RealtimeSession:
         self._session: Any = None
         self._recv_task: Optional[asyncio.Task] = None
         self._closed = False
+        self._close_fired = False  # guards on_close to a single delivery
         self._response_active = False  # True between response.created and response.done
         self._auto_response = True  # turn_detection.create_response (off in group mode)
 
@@ -202,6 +203,10 @@ class RealtimeSession:
         self.on_response_done: Optional[AsyncCb] = None  # ()
         self.on_function_call: Optional[AsyncCb] = None  # (name, call_id, args_json)
         self.on_error: Optional[AsyncCb] = None  # (error: Any)
+        # Fired when the provider WebSocket drops on its own (server close / transport
+        # error), NOT on our own close(). Lets the handler tear the Teams call down
+        # instead of leaving the caller in silent dead air. (reason: str)
+        self.on_close: Optional[AsyncCb] = None
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -382,10 +387,15 @@ class RealtimeSession:
     async def _recv_loop(self) -> None:
         import aiohttp
 
+        reason = "provider-closed"
         try:
             async for msg in self._ws:
                 if msg.type is not aiohttp.WSMsgType.TEXT:
-                    if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                    if msg.type is aiohttp.WSMsgType.ERROR:
+                        reason = "provider-error"
+                        break
+                    if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED):
+                        reason = "provider-closed"
                         break
                     continue
                 try:
@@ -394,9 +404,23 @@ class RealtimeSession:
                     continue
                 await self._dispatch(evt)
         except asyncio.CancelledError:
+            # Our own close() cancelled the loop — an intentional teardown, so do
+            # NOT fire on_close (the handler is already ending the call).
             raise
-        except Exception:  # noqa: BLE001 — keep the call alive on transport hiccups
+        except Exception:  # noqa: BLE001 — a transport error must not crash silently
+            reason = "provider-error"
             logger.error("[teams_voice] realtime recv loop error", exc_info=True)
+        # The socket dropped on the provider's side (server close, transport error,
+        # or the stream just ended) while we did NOT initiate it: notify the handler
+        # so it can close the Teams call rather than leave the caller in dead air.
+        await self._notify_close(reason)
+
+    async def _notify_close(self, reason: str) -> None:
+        """Fire on_close once, unless the drop was our own close() (``_closed``)."""
+        if self._close_fired or self._closed:
+            return
+        self._close_fired = True
+        await self._safe(self.on_close, reason)
 
     async def _dispatch(self, evt: dict) -> None:
         etype = evt.get("type", "")
@@ -434,6 +458,13 @@ class RealtimeSession:
                     )
             await self._safe(self.on_response_done)
         elif etype == "error":
+            # A rejected response.create ("conversation already has an active
+            # response", rate-limit, etc.) fires 'error' with NO matching
+            # response.done, so _response_active would stay latched True — and
+            # create_response / send_user_text / send_function_result are all guarded
+            # on it, permanently muting the bot in group/manual mode. Clear it here so
+            # the next turn can speak.
+            self._response_active = False
             logger.warning("[teams_voice] realtime error: %s", evt.get("error"))
             await self._safe(self.on_error, evt.get("error"))
 
