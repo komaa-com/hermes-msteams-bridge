@@ -242,6 +242,15 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             return
         await self._rt.send_user_text(f"The caller pressed the {msg.digit} key on the keypad.")
 
+    async def on_assistant_say(self, session: CallSession, msg: protocol.AssistantSay) -> None:
+        # H4: the worker asks the agent to speak a line (e.g. a brief goodbye right before a
+        # limit-cutoff teardown) in its own realtime voice. Inject it as an instruction and trigger
+        # a spoken response. Not recording-gated: the worker explicitly requested this utterance.
+        text = (msg.text or "").strip()
+        if self._rt is None or not text:
+            return
+        await self._rt.request_say(f"Say this to the caller, then stop: {text}")
+
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
         await super().on_session_end(session, msg)
         if self._ambient_task is not None:
@@ -454,6 +463,14 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             await self._speak(text)
         finally:
             self._processing = False
+
+    async def on_assistant_say(self, session: CallSession, msg: protocol.AssistantSay) -> None:
+        # H4: speak the worker-provided line (e.g. a goodbye before a limit cutoff) via the TTS path.
+        text = (msg.text or "").strip()
+        if not text:
+            return
+        self._processing = True  # half-duplex: hold the turn while we speak
+        await self._speak_turn(text)
 
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
         await super().on_session_end(session, msg)
