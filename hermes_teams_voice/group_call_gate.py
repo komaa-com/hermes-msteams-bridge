@@ -29,7 +29,6 @@ class GroupCallGateConfig:
 class GateDecision:
     respond: bool
     addressed: bool
-    gated: bool  # True when the gate actively suppressed an otherwise-eligible turn
 
 
 def resolve_group_call_gate_config(raw: dict | None) -> GroupCallGateConfig:
@@ -81,17 +80,26 @@ def should_respond_to_group_turn(
     group with the gate on, respond when addressed by name OR still inside the
     follow-up window after the last addressed turn.
     """
-    if not is_group or not config.require_address:
-        return GateDecision(respond=True, addressed=False, gated=False)
-
     addressed = is_addressed(transcript, config.wake_phrases)
+    # The gate is active only for a real group call with require_address AND at
+    # least one non-empty wake phrase. An empty wake_phrases tuple makes is_addressed
+    # always False, so an active gate would mute the bot forever — treat "no trigger
+    # configured" as gate-off (mirror group-call-gate.ts:102).
+    gate_active = (
+        is_group
+        and config.require_address
+        and any(p.strip() for p in config.wake_phrases)
+    )
+    if not gate_active:
+        return GateDecision(respond=True, addressed=addressed)
+
     if addressed:
-        return GateDecision(respond=True, addressed=True, gated=False)
+        return GateDecision(respond=True, addressed=True)
 
     if (
         last_addressed_at_ms is not None
         and now_ms - last_addressed_at_ms <= config.follow_up_window_ms
     ):
-        return GateDecision(respond=True, addressed=False, gated=False)
+        return GateDecision(respond=True, addressed=False)
 
-    return GateDecision(respond=False, addressed=False, gated=True)
+    return GateDecision(respond=False, addressed=False)

@@ -30,7 +30,7 @@ def test_one_to_one_always_responds():
         transcript="anything", is_group=False, config=cfg,
         last_addressed_at_ms=None, now_ms=1000,
     )
-    assert d.respond and not d.gated
+    assert d.respond
 
 
 def test_group_gate_suppresses_unaddressed():
@@ -39,7 +39,18 @@ def test_group_gate_suppresses_unaddressed():
         transcript="just chatting with colleagues", is_group=True, config=cfg,
         last_addressed_at_ms=None, now_ms=1000,
     )
-    assert not d.respond and d.gated
+    assert not d.respond
+
+
+def test_group_gate_empty_wake_phrases_does_not_mute_forever():
+    # An empty wake_phrases tuple would make is_addressed always False; an active
+    # gate would then suppress every group turn forever. Guard: no trigger → gate off.
+    cfg = GroupCallGateConfig(wake_phrases=())
+    d = should_respond_to_group_turn(
+        transcript="hello team", is_group=True, config=cfg,
+        last_addressed_at_ms=None, now_ms=1000,
+    )
+    assert d.respond  # not muted despite being a group call
 
 
 def test_group_follow_up_window():
