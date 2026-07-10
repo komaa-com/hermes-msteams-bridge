@@ -58,8 +58,11 @@ plugins:
     - teams_voice
 ```
 
-> **`hermes plugins enable` does NOT work for pip-installed plugins** - it only
-> sees bundled/user-dir plugins. You must enable it in `config.yaml` as above.
+:::caution[Pip plugins are enabled in config.yaml only]
+**`hermes plugins enable` does NOT work for pip-installed plugins** - it only sees
+bundled/user-dir plugins. You must add `teams_voice` to `plugins.enabled` in
+`config.yaml` as above.
+:::
 
 Confirm Hermes now sees it:
 
@@ -122,7 +125,7 @@ hermes teams-voice serve --handler realtime
 
 You should see it bind:
 
-```
+```text
 [teams_voice] bridge listening host=127.0.0.1 port=8443 path=/voice/msteams/stream/{call_id}
 ```
 

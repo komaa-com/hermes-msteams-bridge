@@ -24,14 +24,16 @@ From the plugin's point of view **the connection is identical across all tiers**
 same local server, same HMAC WebSocket, same protocol. The tier only decides which
 StandIn identity and which limits apply.
 
-```
+```text
  Teams call ⇄  StandIn media bridge  ──HMAC WS──▶  127.0.0.1:8443  (this plugin)
    (hosted)     dials in with X-OpenClawTeamsBridge-Timestamp / -Signature headers
 ```
 
+:::caution[Loopback by default]
 Because the shared secret rides this connection, the plugin binds **loopback** by
 default. Binding to a non-loopback host is possible but the plugin warns you,
 because it exposes the secret to that interface.
+:::
 
 ## The three tiers
 
