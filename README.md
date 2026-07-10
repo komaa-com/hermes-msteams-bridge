@@ -1,10 +1,12 @@
 # hermes-plugin-teams-voice
 
-[![PyPI](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
-[![Python](https://img.shields.io/pypi/pyversions/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
 [![CI](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-github.io-1f8acb.svg)](https://komaa-com.github.io/hermes-plugin-teams-voice/)
+[![PyPI version](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
+[![downloads](https://img.shields.io/pypi/dm/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
+[![Python](https://img.shields.io/pypi/pyversions/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
+[![docs](https://img.shields.io/badge/docs-komaa--com.github.io-1f8acb.svg)](https://komaa-com.github.io/hermes-plugin-teams-voice/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Agent**,
 packaged as a standalone, pip-installable plugin: install it *on top of* a normal
