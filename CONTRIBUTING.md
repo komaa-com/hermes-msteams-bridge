@@ -108,4 +108,4 @@ Releases go to PyPI as `hermes-plugin-teams-voice`.
 
 Open an issue on
 [GitHub](https://github.com/komaa-com/hermes-plugin-teams-voice/issues), or read
-the [community wiki](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki).
+the [documentation site](https://komaa-com.github.io/hermes-plugin-teams-voice/).
