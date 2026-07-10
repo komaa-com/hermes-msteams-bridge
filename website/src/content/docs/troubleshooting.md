@@ -35,7 +35,7 @@ Two independent requirements - **both** must hold:
    /path/to/hermes/venv/bin/python -c "import hermes_teams_voice; print('ok')"
    ```
    If that fails, reinstall targeting the Hermes interpreter (see
-   [Getting Started](/hermes-plugin-teams-voice/getting-started/#1-install-into-the-same-venv-as-hermes)).
+   [Getting Started](/hermes-msteams-bridge/getting-started/#1-install-into-the-same-venv-as-hermes)).
 2. **Listed in `plugins.enabled`.** Entry-point plugins are opt-in. Add
    `teams_voice` to `plugins.enabled` in `~/.hermes/config.yaml`.
 
@@ -98,7 +98,7 @@ To let a specific caller in, add their AAD object id to `allowlist`. To open it 
 That's the **StandIn cutoff**. The **sandbox** and **free** tiers are daily-capped
 (about 5 minutes/day); a **subscription** may have a max-minutes governor. StandIn
 sends an `assistant.say` goodbye the agent speaks, then ends the call. For longer
-calls, use a subscription tier - see [Connecting to StandIn](/hermes-plugin-teams-voice/connecting-to-standin/).
+calls, use a subscription tier - see [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/).
 
 ## Quick liveness check
 
@@ -114,6 +114,6 @@ If that fails, the plugin's server isn't running (or is bound to a different hos
 ## Still stuck?
 
 Run with info logging and watch the `[teams_voice]` lines, then open an issue on
-[GitHub](https://github.com/komaa-com/hermes-plugin-teams-voice/issues) with the
+[GitHub](https://github.com/komaa-com/hermes-msteams-bridge/issues) with the
 handler you used, the log around the failure, and your (secret-free) config. Hosted-
 service questions belong at [docs.komaa.com](https://docs.komaa.com).

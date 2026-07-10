@@ -36,15 +36,15 @@ find ~ -path "*/.hermes/*/venv" -type d 2>/dev/null
 Install into that interpreter:
 
 ```bash
-uv pip install --python /path/to/hermes/venv/bin/python hermes-plugin-teams-voice
+uv pip install --python /path/to/hermes/venv/bin/python hermes-msteams-bridge
 # or, with the Hermes venv activated:
-#   pip install hermes-plugin-teams-voice
+#   pip install hermes-msteams-bridge
 ```
 
 Optional faster audio resampling:
 
 ```bash
-uv pip install --python /path/to/hermes/venv/bin/python "hermes-plugin-teams-voice[numpy]"
+uv pip install --python /path/to/hermes/venv/bin/python "hermes-msteams-bridge[numpy]"
 ```
 
 ## 2. Enable the plugin
@@ -102,7 +102,7 @@ TEAMS_VOICE_SHARED_SECRET=<the value from StandIn>
 OPENAI_API_KEY=<your-openai-key>
 ```
 
-The full key list is in the [Configuration Reference](/hermes-plugin-teams-voice/configuration-reference/).
+The full key list is in the [Configuration Reference](/hermes-msteams-bridge/configuration-reference/).
 
 ## 4. Try it on the StandIn sandbox
 
@@ -115,7 +115,7 @@ required:
    `TEAMS_VOICE_SHARED_SECRET`.
 
 The sandbox is time-limited (about 5 minutes/day per session) - perfect for a first
-run. See [Connecting to StandIn](/hermes-plugin-teams-voice/connecting-to-standin/) for all three tiers.
+run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) for all three tiers.
 
 ## 5. Run the plugin
 
@@ -144,5 +144,5 @@ talking. Try:
 - "Call me back in a minute with the summary." - an outbound call-back.
 
 That's it - you have a Hermes agent on a live Teams call. Next: read
-[Features](/hermes-plugin-teams-voice/features/) for everything it can do, or
-[Troubleshooting](/hermes-plugin-teams-voice/troubleshooting/) if something didn't connect.
+[Features](/hermes-msteams-bridge/features/) for everything it can do, or
+[Troubleshooting](/hermes-msteams-bridge/troubleshooting/) if something didn't connect.

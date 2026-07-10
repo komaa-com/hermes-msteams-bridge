@@ -45,7 +45,7 @@ plugins:
 | `hmac_window_ms` | `TEAMS_VOICE_HMAC_WINDOW_MS` | `60000` | Clock-skew / replay window for the HMAC handshake, in milliseconds (±60 s). |
 | `max_call_duration_s` | `TEAMS_VOICE_MAX_CALL_DURATION_S` | `0.0` | Hard wall-clock cap on a single call, in seconds. `0` = unlimited. A wedged/never-ending call is torn down once exceeded. |
 | `require_recording_status` | `TEAMS_VOICE_REQUIRE_RECORDING_STATUS` | `true` | Gate all media processing until Teams recording is `active`. Recommended on for compliance. |
-| `worker_base_url` | `TEAMS_VOICE_WORKER_BASE_URL` | `http://127.0.0.1:9440` | Loopback HTTP endpoint StandIn exposes for outbound "call me back". See [Outbound Calls](/hermes-plugin-teams-voice/outbound-calls/). |
+| `worker_base_url` | `TEAMS_VOICE_WORKER_BASE_URL` | `http://127.0.0.1:9440` | Loopback HTTP endpoint StandIn exposes for outbound "call me back". See [Outbound Calls](/hermes-msteams-bridge/outbound-calls/). |
 | `allow_remote_worker` | `TEAMS_VOICE_ALLOW_REMOTE_WORKER` | `false` | Permit an outbound place-call to a **non-loopback** `worker_base_url`. Off by default (SSRF guard - the secret would be sent to that host). |
 | `tenant_id` | `TEAMS_VOICE_TENANT_ID` (falls back to `TEAMS_TENANT_ID`) | `""` | Default Azure AD tenant for outbound calls. |
 | `allowlist` | `TEAMS_VOICE_ALLOWLIST` (falls back to `TEAMS_ALLOWED_USERS`) | `()` (empty) | Comma-separated caller **AAD object ids** allowed to call. **Empty = deny ALL inbound callers** unless `allow_all` is set. |

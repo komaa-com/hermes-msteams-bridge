@@ -1,7 +1,7 @@
 name: docs
 
 # Build the website/ Astro Starlight site and publish it to GitHub Pages at
-# https://komaa-com.github.io/hermes-plugin-teams-voice/
+# https://komaa-com.github.io/hermes-msteams-bridge/
 # Pages source must be set to "GitHub Actions" (build_type: workflow).
 
 on:

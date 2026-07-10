@@ -1,11 +1,11 @@
-// Docs site for hermes-plugin-teams-voice, published to GitHub Pages at
-// https://komaa-com.github.io/hermes-plugin-teams-voice/ by .github/workflows/docs.yml.
+// Docs site for hermes-msteams-bridge, published to GitHub Pages at
+// https://komaa-com.github.io/hermes-msteams-bridge/ by .github/workflows/docs.yml.
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
   site: "https://komaa-com.github.io",
-  base: "/hermes-plugin-teams-voice",
+  base: "/hermes-msteams-bridge",
   integrations: [
     starlight({
       title: "Microsoft Teams Bridge for Hermes Agent",
@@ -15,7 +15,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/komaa-com/hermes-plugin-teams-voice",
+          href: "https://github.com/komaa-com/hermes-msteams-bridge",
         },
       ],
       sidebar: [

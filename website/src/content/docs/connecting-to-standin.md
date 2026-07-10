@@ -93,4 +93,4 @@ max-minutes governor** - StandIn sends an `assistant.say` frame carrying a short
 goodbye line. Your agent **speaks that line in its own voice**, and StandIn then
 ends the call gracefully. So the caller hears a clean sign-off rather than a
 sudden drop. (You can also set a local hard cap with `max_call_duration_s`; see the
-[Configuration Reference](/hermes-plugin-teams-voice/configuration-reference/).)
+[Configuration Reference](/hermes-msteams-bridge/configuration-reference/).)

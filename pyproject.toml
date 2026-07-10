@@ -3,8 +3,8 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hermes-plugin-teams-voice"
-version = "0.1.5"
+name = "hermes-msteams-bridge"
+version = "0.1.6"
 description = "Microsoft Teams Bridge for Hermes Agent: voice/video (Conversational Video Interface) plugin"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,10 +29,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/komaa-com/hermes-plugin-teams-voice"
-Repository = "https://github.com/komaa-com/hermes-plugin-teams-voice"
-Issues = "https://github.com/komaa-com/hermes-plugin-teams-voice/issues"
-Documentation = "https://komaa-com.github.io/hermes-plugin-teams-voice/"
+Homepage = "https://github.com/komaa-com/hermes-msteams-bridge"
+Repository = "https://github.com/komaa-com/hermes-msteams-bridge"
+Issues = "https://github.com/komaa-com/hermes-msteams-bridge/issues"
+Documentation = "https://komaa-com.github.io/hermes-msteams-bridge/"
 
 [project.optional-dependencies]
 # Faster audio resampling (pure-Python fallback is used when absent).
