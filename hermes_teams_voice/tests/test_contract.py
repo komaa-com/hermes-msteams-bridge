@@ -33,6 +33,7 @@ def test_decode_inbound_media_and_control():
     assert p.decode(json.dumps({"type": "recording.status", "status": "active"})).status == "active"
     assert p.decode(json.dumps({"type": "participants", "count": 3})).count == 3
     assert p.decode(json.dumps({"type": "dtmf", "digit": "5"})).digit == "5"
+    assert p.decode(json.dumps({"type": "assistant.say", "text": "bye now"})).text == "bye now"
     assert p.decode(json.dumps({"type": "ping", "ts": 99})).ts == 99
     assert p.decode(json.dumps({"type": "session.end", "reason": "call-ended"})).reason == "call-ended"
 

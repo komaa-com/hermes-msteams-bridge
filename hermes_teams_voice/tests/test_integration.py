@@ -45,6 +45,7 @@ class FakeRealtime:
         self.auto: list[bool] = []
         self.created = 0
         self.cancelled = 0
+        self.says: list[str] = []
 
     async def set_auto_response(self, enabled):
         self.auto.append(enabled)
@@ -54,6 +55,9 @@ class FakeRealtime:
 
     async def cancel_response(self):
         self.cancelled += 1
+
+    async def request_say(self, instruction):
+        self.says.append(instruction)
 
 
 def _start(aad="aad-x", direction="inbound"):
@@ -242,3 +246,41 @@ def test_greeting_plan_outbound_without_pending_is_silent():
     h = _streaming()
     h._outbound = True
     assert h._greeting_plan() is None
+
+
+def test_realtime_assistant_say_speaks_in_own_voice():
+    # H4: an assistant.say frame makes the realtime agent speak the text (a spoken response).
+    cfg = resolve_config(extra={"shared_secret": "s"})
+    h = handlers.RealtimeCallSessionHandler(RealtimeConfig(api_key="x"), bridge_config=cfg)
+    h._rt = FakeRealtime()
+    sess = FakeSession()
+    h._session = sess
+
+    asyncio.run(
+        h.on_assistant_say(sess, protocol.AssistantSay(type="assistant.say", text="Goodbye for now."))
+    )
+    assert len(h._rt.says) == 1
+    assert "Goodbye for now." in h._rt.says[0]
+
+    # A blank line is ignored (no spoken response).
+    asyncio.run(h.on_assistant_say(sess, protocol.AssistantSay(type="assistant.say", text="   ")))
+    assert len(h._rt.says) == 1
+
+
+def test_streaming_assistant_say_speaks_via_tts_path():
+    # H4: in streaming mode the text is spoken through the existing TTS path (_speak).
+    cfg = resolve_config(extra={"shared_secret": "s"})
+    h = handlers.StreamingCallSessionHandler(bridge_config=cfg)
+    sess = FakeSession()
+    h._session = sess
+
+    spoken: list[str] = []
+
+    async def fake_speak(text):
+        spoken.append(text)
+
+    h._speak = fake_speak  # type: ignore[assignment]
+    asyncio.run(
+        h.on_assistant_say(sess, protocol.AssistantSay(type="assistant.say", text="Time is up. Goodbye."))
+    )
+    assert spoken == ["Time is up. Goodbye."]

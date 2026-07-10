@@ -31,6 +31,7 @@ TYPE_VIDEO_FRAME = "video.frame"
 TYPE_PARTICIPANTS = "participants"
 TYPE_DTMF = "dtmf"
 TYPE_PING = "ping"
+TYPE_ASSISTANT_SAY = "assistant.say"
 
 # Outbound: gateway -> worker
 TYPE_ASSISTANT_CANCEL = "assistant.cancel"
@@ -131,6 +132,12 @@ class Ping:
     ts: int
 
 
+@dataclass(frozen=True)
+class AssistantSay:
+    type: str
+    text: str
+
+
 InboundMessage = (
     SessionStart
     | SessionEnd
@@ -140,6 +147,7 @@ InboundMessage = (
     | Participants
     | Dtmf
     | Ping
+    | AssistantSay
 )
 
 
@@ -203,6 +211,8 @@ def decode(raw: str | bytes) -> InboundMessage:
             return Dtmf(type=mtype, digit=_require_str(obj, "digit"))
         if mtype == TYPE_PING:
             return Ping(type=mtype, ts=int(obj.get("ts") or 0))
+        if mtype == TYPE_ASSISTANT_SAY:
+            return AssistantSay(type=mtype, text=_require_str(obj, "text"))
     except (KeyError, TypeError, ValueError) as exc:
         raise ProtocolError(f"bad {mtype!r} frame: {exc}") from exc
 

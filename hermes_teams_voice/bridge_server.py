@@ -108,6 +108,9 @@ class CallSessionHandler:
     async def on_dtmf(self, session: CallSession, msg: protocol.Dtmf) -> None:
         ...  # base no-op; the realtime handler surfaces keypresses to the model
 
+    async def on_assistant_say(self, session: CallSession, msg: protocol.AssistantSay) -> None:
+        ...  # base no-op; the realtime/streaming handlers speak the text (H4 cutoff goodbye)
+
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
         logger.info("[teams_voice] session.end call=%s reason=%s", session.call_id, msg.reason)
 
@@ -307,6 +310,8 @@ class BridgeServer:
                 await handler.on_participants(session, parsed)
             elif isinstance(parsed, protocol.Dtmf):
                 await handler.on_dtmf(session, parsed)
+            elif isinstance(parsed, protocol.AssistantSay):
+                await handler.on_assistant_say(session, parsed)
             elif isinstance(parsed, protocol.SessionEnd):
                 session.ended = True  # explicit end: skip the abrupt-close fallback
                 await handler.on_session_end(session, parsed)
