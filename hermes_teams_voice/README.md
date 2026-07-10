@@ -3,7 +3,7 @@
 This is the developer-facing map of the Python package. For install/usage, see the
 [repo README](../README.md); for architecture, see [DESIGN.md](../DESIGN.md); for the
 full config and wire reference, see the
-[community wiki](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki).
+[documentation site](https://komaa-com.github.io/hermes-plugin-teams-voice/).
 
 ## What this package does
 
@@ -86,7 +86,7 @@ which owns the shared session policy.
 
 The `sharedSecret` here **must equal** the value paired in StandIn or the handshake
 fails. The full field-level tables are on the
-[Wire Protocol](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Wire-Protocol)
+[Wire Protocol](https://komaa-com.github.io/hermes-plugin-teams-voice/wire-protocol/)
 wiki page.
 
 ## Configuration
@@ -96,7 +96,7 @@ wiki page.
 variables, then safe defaults. `RealtimeConfig` (`realtime/openai_client.py`)
 resolves the realtime provider (OpenAI or Azure) the same way. Secrets are never
 logged. Every key, env var, and default is documented on the
-[Configuration Reference](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Configuration-Reference)
+[Configuration Reference](https://komaa-com.github.io/hermes-plugin-teams-voice/configuration-reference/)
 wiki page.
 
 Example `config.yaml`:

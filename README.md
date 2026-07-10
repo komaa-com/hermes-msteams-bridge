@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
 [![Python](https://img.shields.io/pypi/pyversions/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
 [![CI](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-komaa.com-1f8acb.svg)](https://docs.komaa.com/)
+[![Docs](https://img.shields.io/badge/docs-github.io-1f8acb.svg)](https://komaa-com.github.io/hermes-plugin-teams-voice/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Agent**,
@@ -16,9 +16,9 @@ speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, th
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
 
-> 📖 **Full setup, configuration & reference:** **https://docs.komaa.com/**
-> 🧭 **Community wiki (deep dives, wire protocol, troubleshooting):**
-> **[the project wiki](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki)**
+> 📖 **Plugin docs (setup, configuration, wire protocol, troubleshooting):**
+> **https://komaa-com.github.io/hermes-plugin-teams-voice/**
+> 🌐 **StandIn hosted-service docs (account, dashboard, pairing):** **https://docs.komaa.com/**
 
 ## Getting started
 
@@ -164,9 +164,9 @@ TEAMS_TENANT_ID=<azure-ad-tenant-id>
 `shared_secret` **must match** the secret paired in StandIn or the HMAC
 handshake fails. Full key reference (every option, defaults, env vars, streaming
 mode, the wire protocol): the
-[**Configuration Reference**](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Configuration-Reference)
-and [**Wire Protocol**](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Wire-Protocol)
-wiki pages. Contributor architecture notes live in
+[**Configuration Reference**](https://komaa-com.github.io/hermes-plugin-teams-voice/configuration-reference/)
+and [**Wire Protocol**](https://komaa-com.github.io/hermes-plugin-teams-voice/wire-protocol/)
+docs pages. Contributor architecture notes live in
 [`DESIGN.md`](DESIGN.md); the module-level guide is in
 [`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
 
