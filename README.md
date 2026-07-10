@@ -17,6 +17,8 @@ driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
 
 > 📖 **Full setup, configuration & reference:** **https://docs.komaa.com/**
+> 🧭 **Community wiki (deep dives, wire protocol, troubleshooting):**
+> **[the project wiki](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki)**
 
 ## Getting started
 
@@ -111,14 +113,21 @@ plugins:
   entries:
     teams_voice:
       config:
-        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # MUST match the secret set in StandIn
+        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # MUST match the secret paired in StandIn
         host: 127.0.0.1
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
+        max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
         share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: attach files/minutes to the chat
         meeting_recap: true                # optional: post minutes at call end
         allowlist: []                      # caller AAD object ids (empty = deny all inbound callers)
         allow_all: false                   # explicit opt-in: accept any caller when the allowlist is empty
+        allowlist_allow_names: false       # also match the allowlist against display names (weaker; default off)
         session_scope: per-call            # per-call | per-thread | per-aad
+        wake_phrases: [assistant, hermes]  # group-call wake phrases (speak only when addressed)
+        bilingual: false                   # pin the realtime model to Arabic/English
+        # Outbound "call me back" (StandIn places the return call over its loopback endpoint):
+        worker_base_url: http://127.0.0.1:9440   # loopback endpoint StandIn exposes for place-call
+        allow_remote_worker: false         # refuse a non-loopback place-call target unless set
         # Realtime (speech-to-speech) brain - Azure OpenAI Realtime:
         realtime:
           backend: azure                   # azure | openai
@@ -152,9 +161,14 @@ TEAMS_CLIENT_SECRET=<bot-app-secret>
 TEAMS_TENANT_ID=<azure-ad-tenant-id>
 ```
 
-`shared_secret` **must match** the secret set in StandIn or the HMAC
-handshake fails. Full key reference (every option, streaming mode, DLP/audit, the
-required Microsoft Graph permissions): [`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
+`shared_secret` **must match** the secret paired in StandIn or the HMAC
+handshake fails. Full key reference (every option, defaults, env vars, streaming
+mode, the wire protocol): the
+[**Configuration Reference**](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Configuration-Reference)
+and [**Wire Protocol**](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Wire-Protocol)
+wiki pages. Contributor architecture notes live in
+[`DESIGN.md`](DESIGN.md); the module-level guide is in
+[`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
 
 ## Upgrade / uninstall
 
