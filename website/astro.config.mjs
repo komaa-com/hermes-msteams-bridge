@@ -8,7 +8,7 @@ export default defineConfig({
   base: "/hermes-plugin-teams-voice",
   integrations: [
     starlight({
-      title: "MS Teams Voice for Hermes",
+      title: "Microsoft Teams Bridge for Hermes Agent",
       description:
         "Microsoft Teams voice and video for a Hermes AI agent: realtime speech-to-speech, vision, avatar cues, meetings, and outbound call-backs via the StandIn media bridge.",
       social: [

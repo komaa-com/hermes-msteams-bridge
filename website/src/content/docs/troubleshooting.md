@@ -108,7 +108,7 @@ The server answers `GET /health` with `ok` on the same host/port:
 curl http://127.0.0.1:8443/health   # -> ok
 ```
 
-If that fails, the bridge isn't running (or is bound to a different host/port) -
+If that fails, the plugin's server isn't running (or is bound to a different host/port) -
 `hermes teams-voice status` shows the resolved values.
 
 ## Still stuck?

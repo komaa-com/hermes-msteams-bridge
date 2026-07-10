@@ -117,7 +117,7 @@ required:
 The sandbox is time-limited (about 5 minutes/day per session) - perfect for a first
 run. See [Connecting to StandIn](/hermes-plugin-teams-voice/connecting-to-standin/) for all three tiers.
 
-## 5. Run the bridge
+## 5. Run the plugin
 
 ```bash
 hermes teams-voice serve --handler realtime
