@@ -1,4 +1,4 @@
-# DESIGN — hermes-plugin-teams-voice
+# DESIGN - hermes-plugin-teams-voice
 
 Contributor-facing architecture notes for the `teams_voice` Hermes plugin. If you
 want to *use* the plugin, start with the [README](README.md) and the
@@ -12,7 +12,7 @@ pure-Python Hermes plugin, installed into the same environment as Hermes and
 discovered through the `hermes_agent.plugins` entry point.
 
 The plugin does **not** join Teams calls itself. That is done by **StandIn** (the
-hosted "StandIn media bridge") — a subscription service that joins the Teams
+hosted "StandIn media bridge") - a subscription service that joins the Teams
 meeting, handles the real-time Teams media, and speaks to this plugin over a
 WebSocket. The plugin is the **local WebSocket server**; the StandIn media bridge
 is the **client that dials in**. The plugin owns the *brain* of the call
@@ -20,14 +20,14 @@ is the **client that dials in**. The plugin owns the *brain* of the call
 
 ```
  Teams call ⇄  StandIn media bridge  ──HMAC WebSocket──▶  teams_voice plugin (Hermes)
-   (hosted)      dials into the plugin        • bridge_server.py  — the WS server
-                                              • handlers.py        — the call brain
-                                              • realtime/          — speech-to-speech client
-                                              • the Hermes agent   — real work / tools
+   (hosted)      dials into the plugin        • bridge_server.py  - the WS server
+                                              • handlers.py        - the call brain
+                                              • realtime/          - speech-to-speech client
+                                              • the Hermes agent   - real work / tools
 ```
 
 Everything below the WebSocket line lives in this repo. Everything above it is
-StandIn and is out of scope for this plugin — we document only the **wire
+StandIn and is out of scope for this plugin - we document only the **wire
 protocol** StandIn speaks with us, never its internals.
 
 ## The local-WS-server model
@@ -35,7 +35,7 @@ protocol** StandIn speaks with us, never its internals.
 Unlike a typical client/gateway split, here **the plugin binds and waits** and the
 StandIn media bridge is the WebSocket client:
 
-- The plugin binds `127.0.0.1:8443` by default (loopback — the shared secret must
+- The plugin binds `127.0.0.1:8443` by default (loopback - the shared secret must
   never be exposed on a public interface).
 - One Teams call opens **one WebSocket connection** to
   `/voice/msteams/stream/{callId}`.
@@ -51,7 +51,7 @@ interface so the wire layer never has to change when the "brain" changes.
 ## The handler abstraction: `CallSessionHandler`
 
 `CallSessionHandler` (in `bridge_server.py`) is the interface the dialogue/
-perception brain implements. Every method is `async` and best-effort — a handler
+perception brain implements. Every method is `async` and best-effort - a handler
 exception is logged and the call continues, so a single bad frame never tears down
 the socket. Its callbacks mirror the inbound protocol:
 
@@ -73,13 +73,13 @@ The server passes each session a `CallSession` object with typed `send_*` helper
 `BridgeServer` takes a `handler_factory` and builds **one handler per call**. The
 `--handler` CLI flag selects the factory:
 
-- **`logging`** (default) — the base `CallSessionHandler`: logs frames, sends no
+- **`logging`** (default) - the base `CallSessionHandler`: logs frames, sends no
   audio back. Useful to confirm the handshake and lifecycle without a provider.
-- **`echo`** — `EchoCallSessionHandler`: smiles on connect and echoes the caller's
+- **`echo`** - `EchoCallSessionHandler`: smiles on connect and echoes the caller's
   audio back. A dependency-light smoke test that proves the full media path works.
-- **`realtime`** — `RealtimeCallSessionHandler`: the full speech-to-speech brain
+- **`realtime`** - `RealtimeCallSessionHandler`: the full speech-to-speech brain
   (OpenAI/Azure Realtime). Needs a realtime API key.
-- **`streaming`** — `StreamingCallSessionHandler`: a half-duplex STT → agent → TTS
+- **`streaming`** - `StreamingCallSessionHandler`: a half-duplex STT → agent → TTS
   loop that works with any STT/TTS provider. Needs `ffmpeg` on PATH.
 
 The realtime and streaming handlers share `BaseTeamsCallHandler`
@@ -107,7 +107,7 @@ greeting/outbound state. The two subclasses only implement what actually differs
 6. **Turns.** Audio/video/DTMF frames flow to the handler; the brain streams audio
    and avatar cues back. Barge-in, the group gate, echo guard, and tools all run
    here.
-7. **Teardown.** On an explicit `session.end` — or an abrupt socket close — the
+7. **Teardown.** On an explicit `session.end` - or an abrupt socket close - the
    server runs `on_session_end` exactly once (idempotent via `session.ended`) so
    realtime sockets and ambient tasks are always cleaned up.
 8. **Max-duration reaper.** If `max_call_duration_s > 0`, a wall-clock deadline is
@@ -163,22 +163,22 @@ back" over StandIn's loopback HTTP endpoint using the same HMAC scheme, signing
 
 The full message tables live in the
 [Wire Protocol](https://github.com/komaa-com/hermes-plugin-teams-voice/wiki/Wire-Protocol)
-wiki page. **Do not drift** the header names, HMAC payload shape, or default path —
+wiki page. **Do not drift** the header names, HMAC payload shape, or default path -
 they are the contract both sides agree on.
 
 ## Python module layout
 
 | Module | Responsibility |
 |---|---|
-| `__init__.py` | `register(ctx)` — registers the status tool, CLI, and session hook |
+| `__init__.py` | `register(ctx)` - registers the status tool, CLI, and session hook |
 | `cli.py` | `hermes teams-voice {status,serve}`; `--handler` selects the brain |
 | `config.py` | `TeamsVoiceConfig`; resolves config.yaml + env + defaults; allowlist check |
 | `bridge_server.py` | the WS server, `CallSession`, `CallSessionHandler`, lifecycle |
 | `protocol.py` | inbound decode + outbound builders (the wire contract) |
 | `hmac_auth.py` | HMAC-SHA256 handshake verify + single-use replay guard |
 | `handlers.py` | `Echo` / `Realtime` / `Streaming` call handlers |
-| `call_session_base.py` | `BaseTeamsCallHandler` — shared session policy + pending-outbound registry |
-| `realtime/openai_client.py` | `RealtimeConfig`, `RealtimeSession` — provider Realtime WS client |
+| `call_session_base.py` | `BaseTeamsCallHandler` - shared session policy + pending-outbound registry |
+| `realtime/openai_client.py` | `RealtimeConfig`, `RealtimeSession` - provider Realtime WS client |
 | `realtime_tools.py` | realtime function-tool schemas exposed to the model |
 | `call_tools.py` | dispatch/execution for the realtime tools |
 | `agent_consult.py` | bridge into the Hermes agent (consult / background task) |

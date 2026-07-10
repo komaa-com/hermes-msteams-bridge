@@ -9,7 +9,7 @@ to PyPI. For the architecture, read [DESIGN.md](DESIGN.md) first.
 - Be friendly and constructive in issues and reviews.
 - Keep changes focused; one logical change per PR.
 - **Leak policy:** do not document the hosted StandIn media bridge's internal
-  implementation — this repo describes only the wire protocol the plugin speaks
+  implementation - this repo describes only the wire protocol the plugin speaks
   with it. (See DESIGN.md.)
 
 ## Dev setup
@@ -42,7 +42,7 @@ pytest hermes_teams_voice/tests/ -v
 
 The suite covers the wire protocol, HMAC handshake + replay guard, the echo guard,
 the group-call gate, verbal interrupts, viseme estimation, vision budget, and the
-audio helpers — all with no network and no Hermes dependency. Please add or update
+audio helpers - all with no network and no Hermes dependency. Please add or update
 tests alongside any behavior change.
 
 ### Optional: running the bridge locally

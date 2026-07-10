@@ -1,4 +1,4 @@
-# `hermes_teams_voice` — internal module guide
+# `hermes_teams_voice` - internal module guide
 
 This is the developer-facing map of the Python package. For install/usage, see the
 [repo README](../README.md); for architecture, see [DESIGN.md](../DESIGN.md); for the
@@ -10,23 +10,23 @@ full config and wire reference, see the
 `teams_voice` is a Hermes plugin that adds **Microsoft Teams voice/video** to a
 Hermes agent. It hosts a local, HMAC-authenticated WebSocket server. The hosted
 **StandIn media bridge** joins the Teams call and dials into that server; this
-package runs the *brain* of the call — dialogue (realtime speech-to-speech or
+package runs the *brain* of the call - dialogue (realtime speech-to-speech or
 streaming STT → agent → TTS), perception (camera/screen vision), and the avatar
-driver cues (expression / visemes / show-to-caller) — and sends them back over the
+driver cues (expression / visemes / show-to-caller) - and sends them back over the
 WebSocket. StandIn renders in the Teams call; this package drives.
 
 ```
 StandIn media bridge ──HMAC WebSocket──▶ teams_voice (this package)
-  (joins the Teams call)                   • bridge_server.py — WS server
-                                           • handlers.py       — call brain
-                                           • realtime/         — speech-to-speech
-                                           • protocol.py       — the wire contract
+  (joins the Teams call)                   • bridge_server.py - WS server
+                                           • handlers.py       - call brain
+                                           • realtime/         - speech-to-speech
+                                           • protocol.py       - the wire contract
 ```
 
 The plugin is the **WebSocket server** (binds `127.0.0.1:8443` by default); StandIn
 is the **client** that dials in. Chat-plane features (messages, message actions,
 recap posting) are handled by the separate `plugins/platforms/teams` adapter, not
-here — this package is the *media/voice* half.
+here - this package is the *media/voice* half.
 
 ## Module map
 
@@ -57,12 +57,12 @@ here — this package is the *media/voice* half.
 `bridge_server.py` dispatches inbound frames into a `CallSessionHandler`. The
 `--handler` flag on `serve` picks one:
 
-- `logging` (default `CallSessionHandler`) — logs frames, no audio back.
-- `echo` (`EchoCallSessionHandler`) — smiles on connect, echoes caller audio; a
+- `logging` (default `CallSessionHandler`) - logs frames, no audio back.
+- `echo` (`EchoCallSessionHandler`) - smiles on connect, echoes caller audio; a
   dependency-light smoke test.
-- `realtime` (`RealtimeCallSessionHandler`) — full speech-to-speech brain over the
+- `realtime` (`RealtimeCallSessionHandler`) - full speech-to-speech brain over the
   provider Realtime WebSocket.
-- `streaming` (`StreamingCallSessionHandler`) — half-duplex STT → agent → TTS;
+- `streaming` (`StreamingCallSessionHandler`) - half-duplex STT → agent → TTS;
   works with any STT/TTS provider.
 
 `realtime` and `streaming` extend `BaseTeamsCallHandler` (`call_session_base.py`),
@@ -78,7 +78,7 @@ which owns the shared session policy.
   cross-checked against the `session.start` body).
 - **Audio:** PCM 16 kHz, 16-bit, mono, little-endian; 20 ms / 640-byte frames,
   base64.
-- **Messages** (camelCase JSON, additive — unknown fields/types degrade gracefully):
+- **Messages** (camelCase JSON, additive - unknown fields/types degrade gracefully):
   - inbound: `session.start`, `session.end`, `recording.status`, `audio.frame`,
     `video.frame`, `participants`, `dtmf`, `ping`, `assistant.say`
   - outbound: `audio.frame`, `assistant.cancel`, `expression`, `speech.marks`,
@@ -141,7 +141,7 @@ permissions, admin-consented, for full functionality:
 | `Sites.ReadWrite.All` | upload files / minutes to SharePoint (OneDrive) |
 
 Outbound "call me back" additionally needs `Calls.InitiateGroupCall.All` (skip if
-unused). Pairing your own bot with StandIn is done in the StandIn dashboard — see
+unused). Pairing your own bot with StandIn is done in the StandIn dashboard - see
 [standin.komaa.com](https://standin.komaa.com) and [docs.komaa.com](https://docs.komaa.com).
 
 ## Run
