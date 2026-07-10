@@ -16,7 +16,7 @@ in the repo, and the architecture is in
 - Run the tests: `pytest hermes_teams_voice/tests/ -v`. They cover the wire protocol,
   HMAC handshake + replay guard, echo guard, group-call gate, verbal interrupts,
   viseme estimation, vision budget, and audio helpers - no network, no Hermes needed.
-- Exercise the bridge locally with `TEAMS_VOICE_SHARED_SECRET=dev hermes teams-voice
+- Exercise the plugin locally with `TEAMS_VOICE_SHARED_SECRET=dev hermes teams-voice
   serve --handler echo` (or `logging`) - neither needs a provider key.
 
 ## Branch + PR conventions

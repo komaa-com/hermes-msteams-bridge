@@ -1,4 +1,4 @@
-# hermes-plugin-teams-voice
+# Microsoft Teams Bridge for Hermes Agent
 
 [![CI](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
