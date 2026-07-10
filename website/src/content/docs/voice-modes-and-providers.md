@@ -29,9 +29,9 @@ mid-reply and the bot stops immediately).
 Under the hood: caller PCM 16 kHz is resampled to 24 kHz for the model, and the
 model's 24 kHz audio is resampled back to 16 kHz and chopped into 20 ms / 640-byte
 frames for StandIn. Transcript deltas drive **expression** cues and estimated
-**visemes** for lip-sync. See [Wire Protocol](/hermes-plugin-teams-voice/wire-protocol/) for the frame format.
+**visemes** for lip-sync. See [Wire Protocol](/hermes-msteams-bridge/wire-protocol/) for the frame format.
 
-Provider selection is automatic (see [Configuration Reference](/hermes-plugin-teams-voice/configuration-reference/#azure-auto-selection)):
+Provider selection is automatic (see [Configuration Reference](/hermes-msteams-bridge/configuration-reference/#azure-auto-selection)):
 
 - **OpenAI** - the default. Set `backend: openai`, `model: gpt-realtime`, and
   `api_key: ${OPENAI_API_KEY}`.

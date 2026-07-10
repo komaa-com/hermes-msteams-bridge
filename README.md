@@ -1,10 +1,10 @@
 # Microsoft Teams Bridge for Hermes Agent
 
-[![CI](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-plugin-teams-voice/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
-[![downloads](https://img.shields.io/pypi/dm/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
-[![Python](https://img.shields.io/pypi/pyversions/hermes-plugin-teams-voice.svg)](https://pypi.org/project/hermes-plugin-teams-voice/)
-[![docs](https://img.shields.io/badge/docs-komaa--com.github.io-1f8acb.svg)](https://komaa-com.github.io/hermes-plugin-teams-voice/)
+[![CI](https://github.com/komaa-com/hermes-msteams-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/komaa-com/hermes-msteams-bridge/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/hermes-msteams-bridge.svg)](https://pypi.org/project/hermes-msteams-bridge/)
+[![downloads](https://img.shields.io/pypi/dm/hermes-msteams-bridge.svg)](https://pypi.org/project/hermes-msteams-bridge/)
+[![Python](https://img.shields.io/pypi/pyversions/hermes-msteams-bridge.svg)](https://pypi.org/project/hermes-msteams-bridge/)
+[![docs](https://img.shields.io/badge/docs-komaa--com.github.io-1f8acb.svg)](https://komaa-com.github.io/hermes-msteams-bridge/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
@@ -56,26 +56,26 @@ first and drop `--python`.
 **A. from PyPI (recommended):**
 
 ```bash
-uv pip install --python /path/to/hermes/venv/bin/python hermes-plugin-teams-voice
-# or, with the Hermes venv activated:  pip install hermes-plugin-teams-voice
+uv pip install --python /path/to/hermes/venv/bin/python hermes-msteams-bridge
+# or, with the Hermes venv activated:  pip install hermes-msteams-bridge
 ```
 
 **B. from GitHub (latest / pre-release):**
 
 ```bash
 uv pip install --python /path/to/hermes/venv/bin/python \
-  "git+https://github.com/komaa-com/hermes-plugin-teams-voice.git"
+  "git+https://github.com/komaa-com/hermes-msteams-bridge.git"
 ```
 
 **C. from a local checkout (development):**
 
 ```bash
-git clone https://github.com/komaa-com/hermes-plugin-teams-voice.git
-uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-plugin-teams-voice
+git clone https://github.com/komaa-com/hermes-msteams-bridge.git
+uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-msteams-bridge
 ```
 
 > Installing into the wrong environment means Hermes won't see the plugin.
-> Faster audio (optional): add the `numpy` extra, e.g. `hermes-plugin-teams-voice[numpy]`.
+> Faster audio (optional): add the `numpy` extra, e.g. `hermes-msteams-bridge[numpy]`.
 
 ## Enable + run
 
@@ -162,8 +162,8 @@ TEAMS_TENANT_ID=<azure-ad-tenant-id>
 `shared_secret` **must match** the secret paired in StandIn or the HMAC
 handshake fails. Full key reference (every option, defaults, env vars, streaming
 mode, the wire protocol): the
-[**Configuration Reference**](https://komaa-com.github.io/hermes-plugin-teams-voice/configuration-reference/)
-and [**Wire Protocol**](https://komaa-com.github.io/hermes-plugin-teams-voice/wire-protocol/)
+[**Configuration Reference**](https://komaa-com.github.io/hermes-msteams-bridge/configuration-reference/)
+and [**Wire Protocol**](https://komaa-com.github.io/hermes-msteams-bridge/wire-protocol/)
 docs pages. Contributor architecture notes live in
 [`DESIGN.md`](DESIGN.md); the module-level guide is in
 [`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
@@ -171,8 +171,8 @@ docs pages. Contributor architecture notes live in
 ## Upgrade / uninstall
 
 ```bash
-uv pip install --upgrade hermes-plugin-teams-voice
-uv pip uninstall hermes-plugin-teams-voice     # then it disappears from `hermes plugins list`
+uv pip install --upgrade hermes-msteams-bridge
+uv pip uninstall hermes-msteams-bridge     # then it disappears from `hermes plugins list`
 ```
 
 ## How it loads

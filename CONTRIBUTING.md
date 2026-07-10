@@ -1,4 +1,4 @@
-# Contributing to hermes-plugin-teams-voice
+# Contributing to hermes-msteams-bridge
 
 Thanks for helping improve the Microsoft Teams voice/video plugin for Hermes!
 This guide covers local setup, conventions, and how a change gets from your branch
@@ -17,8 +17,8 @@ to PyPI. For the architecture, read [DESIGN.md](DESIGN.md) first.
 You need **Python ≥ 3.10**. A virtual environment is strongly recommended.
 
 ```bash
-git clone https://github.com/komaa-com/hermes-plugin-teams-voice.git
-cd hermes-plugin-teams-voice
+git clone https://github.com/komaa-com/hermes-msteams-bridge.git
+cd hermes-msteams-bridge
 
 python -m venv .venv && source .venv/bin/activate   # or your preferred venv
 uv pip install -e .                                 # editable install
@@ -91,7 +91,7 @@ Keep `plugin.yaml`'s `version` in sync with `pyproject.toml`'s `version`.
 
 ## Release / publish to PyPI
 
-Releases go to PyPI as `hermes-plugin-teams-voice`.
+Releases go to PyPI as `hermes-msteams-bridge`.
 
 1. Bump the version in **both** `pyproject.toml` and `hermes_teams_voice/plugin.yaml`.
 2. Update the README/wiki if user-facing behavior changed.
@@ -107,5 +107,5 @@ Releases go to PyPI as `hermes-plugin-teams-voice`.
 ## Questions
 
 Open an issue on
-[GitHub](https://github.com/komaa-com/hermes-plugin-teams-voice/issues), or read
-the [documentation site](https://komaa-com.github.io/hermes-plugin-teams-voice/).
+[GitHub](https://github.com/komaa-com/hermes-msteams-bridge/issues), or read
+the [documentation site](https://komaa-com.github.io/hermes-msteams-bridge/).

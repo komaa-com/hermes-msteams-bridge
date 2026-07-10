@@ -5,7 +5,7 @@ description: "How the plugin is built: the system overview, call lifecycle, hand
 
 This page is the contributor's mental model of the plugin. Everything here describes
 **this repo's** code; the hosted StandIn media bridge appears only through its
-externally observable contract (the [Wire Protocol](/hermes-plugin-teams-voice/wire-protocol/)).
+externally observable contract (the [Wire Protocol](/hermes-msteams-bridge/wire-protocol/)).
 
 ## System overview
 
@@ -40,7 +40,7 @@ Teams call in the cloud and dials in, one WebSocket per call.
 A second, much smaller path exists for outbound "call me back": the plugin makes an
 HMAC-signed `POST /api/calls` to the StandIn media bridge's loopback HTTP endpoint
 (`worker_base_url`, default `http://127.0.0.1:9440`). See
-[Outbound Calls](/hermes-plugin-teams-voice/outbound-calls/).
+[Outbound Calls](/hermes-msteams-bridge/outbound-calls/).
 
 The server also serves a plain `GET /health` (returns `ok`) for liveness checks.
 
@@ -141,7 +141,7 @@ about every 6 s; a 16-frame keyframe history ring serves `look_at_screen` in
 ## Module map
 
 Contributor-level responsibilities (see also
-[Contributing](/hermes-plugin-teams-voice/contributing/)):
+[Contributing](/hermes-msteams-bridge/contributing/)):
 
 | Module | Responsibility |
 |---|---|

@@ -1,8 +1,8 @@
-# DESIGN - hermes-plugin-teams-voice
+# DESIGN - hermes-msteams-bridge
 
 Contributor-facing architecture notes for the `teams_voice` Hermes plugin. If you
 want to *use* the plugin, start with the [README](README.md) and the
-[documentation site](https://komaa-com.github.io/hermes-plugin-teams-voice/).
+[documentation site](https://komaa-com.github.io/hermes-msteams-bridge/).
 This document is for people changing the code.
 
 ## What the plugin is
@@ -162,7 +162,7 @@ back" over StandIn's loopback HTTP endpoint using the same HMAC scheme, signing
 `{ts}.{userObjectId}` (SSRF-guarded to loopback unless `allow_remote_worker`).
 
 The full message tables live in the
-[Wire Protocol](https://komaa-com.github.io/hermes-plugin-teams-voice/wire-protocol/)
+[Wire Protocol](https://komaa-com.github.io/hermes-msteams-bridge/wire-protocol/)
 wiki page. **Do not drift** the header names, HMAC payload shape, or default path -
 they are the contract both sides agree on.
 

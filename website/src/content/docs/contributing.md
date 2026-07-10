@@ -4,9 +4,9 @@ description: "Dev setup, tests, conventions, and a contributor-level module map.
 ---
 
 Contributions are welcome! This page is a quick orientation; the authoritative guide
-is [`CONTRIBUTING.md`](https://github.com/komaa-com/hermes-plugin-teams-voice/blob/main/CONTRIBUTING.md)
+is [`CONTRIBUTING.md`](https://github.com/komaa-com/hermes-msteams-bridge/blob/main/CONTRIBUTING.md)
 in the repo, and the architecture is in
-[`DESIGN.md`](https://github.com/komaa-com/hermes-plugin-teams-voice/blob/main/DESIGN.md).
+[`DESIGN.md`](https://github.com/komaa-com/hermes-msteams-bridge/blob/main/DESIGN.md).
 
 ## Dev setup (short version)
 
@@ -44,7 +44,7 @@ in the repo, and the architecture is in
 | Outbound call-back | `outbound.py` |
 | CLI / registration | `cli.py`, `__init__.py` |
 
-See [DESIGN.md](https://github.com/komaa-com/hermes-plugin-teams-voice/blob/main/DESIGN.md)
+See [DESIGN.md](https://github.com/komaa-com/hermes-msteams-bridge/blob/main/DESIGN.md)
 for how these fit together and the design invariants to preserve.
 
 ## One rule to remember
