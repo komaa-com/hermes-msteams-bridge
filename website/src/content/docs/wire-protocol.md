@@ -16,7 +16,7 @@ gracefully**, so older and newer peers interoperate.
 
 For each Teams call, StandIn opens **one WebSocket** to:
 
-```
+```text
 ws://<host>:<port>/voice/msteams/stream/{callId}
 ```
 
@@ -35,13 +35,13 @@ On the upgrade request, StandIn sends:
 
 The signature is:
 
-```
+```text
 HMAC-SHA256(shared_secret, "{timestampMs}.{callId}")   # lowercase hex
 ```
 
 Example:
 
-```
+```text
 X-OpenClawTeamsBridge-Timestamp: 1720598400000
 X-OpenClawTeamsBridge-Signature: 9f8c...   (hex digest of "1720598400000.abc123")
 ```
@@ -61,6 +61,9 @@ After auth: a global `max_connections` (64) and per-IP `max_connections_per_ip` 
 cap return **503** when exceeded; a **duplicate live `callId`** closes the new
 socket (POLICY_VIOLATION) rather than clobbering the running call; and a connection
 that doesn't send `session.start` within `pre_start_timeout_s` (10 s) is reaped.
+
+The same server also answers a plain HTTP `GET /health` with `ok` - a liveness
+probe, not part of the call protocol.
 
 ## Audio format
 

@@ -35,7 +35,7 @@ Teams media stack yourself.
 
 ## How the pieces fit
 
-```
+```text
  Teams call ⇄  StandIn media bridge  ──HMAC WebSocket──▶  teams_voice plugin (in Hermes)
    (hosted)      joins the meeting             the local WS server + the call brain
                                                         │
@@ -52,6 +52,8 @@ StandIn's job.
 - **[Getting Started](/hermes-plugin-teams-voice/getting-started/)** - install, enable, and place your first call.
 - **[Connecting to StandIn](/hermes-plugin-teams-voice/connecting-to-standin/)** - the connection model, the
   three tiers (sandbox / free / subscription), and the shared secret.
+- **[Architecture](/hermes-plugin-teams-voice/architecture/)** - the system design: call lifecycle, the handler
+  abstraction, the audio pipeline, module map, and the trust model.
 - **[Configuration Reference](/hermes-plugin-teams-voice/configuration-reference/)** - every config key, env var,
   and default.
 - **[Voice Modes & Providers](/hermes-plugin-teams-voice/voice-modes-and-providers/)** - realtime vs streaming;

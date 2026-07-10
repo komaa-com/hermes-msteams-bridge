@@ -22,6 +22,7 @@ export default defineConfig({
         { label: "Overview", slug: "" },
         { label: "Getting Started", slug: "getting-started" },
         { label: "Connecting to StandIn", slug: "connecting-to-standin" },
+        { label: "Architecture", slug: "architecture" },
         { label: "Configuration Reference", slug: "configuration-reference" },
         { label: "Voice Modes & Providers", slug: "voice-modes-and-providers" },
         { label: "Wire Protocol", slug: "wire-protocol" },

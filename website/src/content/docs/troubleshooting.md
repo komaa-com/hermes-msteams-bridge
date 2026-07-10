@@ -39,8 +39,10 @@ Two independent requirements - **both** must hold:
 2. **Listed in `plugins.enabled`.** Entry-point plugins are opt-in. Add
    `teams_voice` to `plugins.enabled` in `~/.hermes/config.yaml`.
 
-> **`hermes plugins enable teams_voice` does NOT work for pip-installed plugins** -
-> it only sees bundled/user-dir plugins. Enable it in `config.yaml` instead.
+:::caution[Pip plugins are enabled in config.yaml only]
+**`hermes plugins enable teams_voice` does NOT work for pip-installed plugins** -
+it only sees bundled/user-dir plugins. Enable it in `config.yaml` instead.
+:::
 
 ## No audio / silent call
 
@@ -97,6 +99,17 @@ That's the **StandIn cutoff**. The **sandbox** and **free** tiers are daily-capp
 (about 5 minutes/day); a **subscription** may have a max-minutes governor. StandIn
 sends an `assistant.say` goodbye the agent speaks, then ends the call. For longer
 calls, use a subscription tier - see [Connecting to StandIn](/hermes-plugin-teams-voice/connecting-to-standin/).
+
+## Quick liveness check
+
+The server answers `GET /health` with `ok` on the same host/port:
+
+```bash
+curl http://127.0.0.1:8443/health   # -> ok
+```
+
+If that fails, the bridge isn't running (or is bound to a different host/port) -
+`hermes teams-voice status` shows the resolved values.
 
 ## Still stuck?
 

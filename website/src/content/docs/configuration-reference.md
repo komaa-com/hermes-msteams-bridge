@@ -57,9 +57,11 @@ plugins:
 | `share_point_site_id` | `TEAMS_SHAREPOINT_SITE_ID` | `""` | SharePoint (OneDrive) site id `host,siteGuid,webGuid` to attach the minutes `.docx` to the chat as a file card. Needs the bot app's Graph `Sites.ReadWrite.All`. Empty = text-only minutes. |
 | `max_vision_per_minute` | `TEAMS_VOICE_MAX_VISION_PER_MINUTE` | `30` | Per-call vision spend cap across `look_at_screen` + ambient push. `0` = unlimited. |
 
-> `allowlist` and `wake_phrases` accept a YAML list in `config.yaml`
-> (`allowlist: [id1, id2]`) or a comma-separated string in the env var
-> (`TEAMS_VOICE_ALLOWLIST=id1,id2`). Values are lowercased and trimmed.
+:::note[List values]
+`allowlist` and `wake_phrases` accept a YAML list in `config.yaml`
+(`allowlist: [id1, id2]`) or a comma-separated string in the env var
+(`TEAMS_VOICE_ALLOWLIST=id1,id2`). Values are lowercased and trimmed.
+:::
 
 ### Internal defaults (not currently config-driven)
 
