@@ -32,7 +32,7 @@ dependencies = [
 Homepage = "https://github.com/komaa-com/hermes-plugin-teams-voice"
 Repository = "https://github.com/komaa-com/hermes-plugin-teams-voice"
 Issues = "https://github.com/komaa-com/hermes-plugin-teams-voice/issues"
-Documentation = "https://docs.komaa.com/"
+Documentation = "https://komaa-com.github.io/hermes-plugin-teams-voice/"
 
 [project.optional-dependencies]
 # Faster audio resampling (pure-Python fallback is used when absent).

@@ -18,10 +18,6 @@ speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, th
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
 
-> 📖 **Plugin docs (setup, configuration, wire protocol, troubleshooting):**
-> **https://komaa-com.github.io/hermes-plugin-teams-voice/**
-> 🌐 **StandIn hosted-service docs (account, dashboard, pairing):** **https://docs.komaa.com/**
-
 ## Getting started
 
 This plugin adds **voice and video (CVI)** on top of Hermes Agent's Microsoft Teams
