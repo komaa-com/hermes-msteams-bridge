@@ -1,7 +1,7 @@
-"""Golden wire-contract test — the JSON the .NET worker (Protocol.cs) exchanges.
+"""Golden wire-contract test - the JSON exchanged with the StandIn media bridge.
 
 Locks the exact camelCase field names + type discriminators on both directions so
-the Hermes driver and the .NET media worker can't silently drift.
+this plugin and the StandIn media bridge can't silently drift.
 """
 
 from __future__ import annotations

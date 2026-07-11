@@ -1,9 +1,9 @@
 """teams_voice plugin — Microsoft Teams real-time voice/video (CVI) bridge driver.
 
-Hosts an HMAC-authenticated WebSocket the companion Windows .NET media worker
+Hosts an HMAC-authenticated WebSocket the StandIn media bridge
 dials into, and drives the call: dialogue (realtime
 or streaming), perception (camera/screen vision), and the avatar rendering cues
-(expression / visemes / show-to-caller). The worker renders the NV12 avatar tile;
+(expression / visemes / show-to-caller). The StandIn media bridge renders the avatar tile;
 this plugin sends the drivers.
 
 Chat-plane integration (Teams messages, message actions, meeting-recap posting)
@@ -13,7 +13,7 @@ the *media/voice* half and deliberately does not duplicate it.
 Status: implemented. Realtime (OpenAI/Azure speech-to-speech) and streaming
 (STT->agent->TTS) call modes; vision, tools (consult/agent_task/look_at_screen/
 show_to_caller/call_me_back/post_meeting_minutes), group gate, verbal interrupts,
-DTMF, bilingual, meeting recap. The Windows .NET media worker renders the avatar.
+DTMF, bilingual, meeting recap. The StandIn media bridge renders the avatar.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def register(ctx) -> None:
         setup_fn=_register_cli,
         handler_fn=_teams_voice_command,
         description=(
-            "Run the HMAC-authenticated bridge the Teams .NET media worker "
+            "Run the HMAC-authenticated bridge the StandIn media bridge "
             "connects to. See: hermes teams-voice status"
         ),
     )

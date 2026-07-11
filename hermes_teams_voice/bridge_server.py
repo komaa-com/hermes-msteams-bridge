@@ -1,8 +1,8 @@
-"""Bridge WebSocket server — the seam the .NET media worker dials into.
+"""Bridge WebSocket server - the seam the StandIn media bridge dials into.
 
-Unlike a typical client/gateway split, here the **worker is the WS client** and
+Unlike a typical client/gateway split, here the **StandIn media bridge is the WS client** and
 this driver is the **server** (it binds and waits). Each Teams call opens one
-connection to ``{path}/{callId}``; the worker authenticates the upgrade with HMAC
+connection to ``{path}/{callId}``; the bridge authenticates the upgrade with HMAC
 headers, sends ``session.start``, then streams inbound media while this side
 streams TTS audio + avatar driver cues back.
 
@@ -119,7 +119,7 @@ HandlerFactory = Callable[[], CallSessionHandler]
 
 
 class BridgeServer:
-    """Hosts the HMAC-authenticated WebSocket the media worker connects to."""
+    """Hosts the HMAC-authenticated WebSocket the StandIn media bridge connects to."""
 
     def __init__(
         self,

@@ -1,14 +1,13 @@
 """HMAC-SHA256 handshake + single-use replay guard for the bridge upgrade.
 
-The .NET worker signs ``HMAC(sharedSecret, "{timestampMs}.{callId}")`` and sends
+The StandIn media bridge signs ``HMAC(sharedSecret, "{timestampMs}.{callId}")`` and sends
 it as two headers on the WebSocket upgrade (see ``config.HEADER_*``). This module
 verifies that signature constant-time, enforces a clock-skew/replay window, and
 records each accepted ``(callId, ts, signature)`` tuple as **single-use** —
 expiring at ``ts + window`` (not ``now + window``) so a future-dated handshake
-from worker clock skew cannot outlive its own validity window.
+from bridge clock skew cannot outlive its own validity window.
 
-Mirrors ``HmacSigner.cs`` (worker) and the handshake in ``msteams-media-stream.ts``
-(the original TypeScript driver).
+Implements the HMAC handshake the StandIn media bridge uses.
 """
 
 from __future__ import annotations
