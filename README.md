@@ -57,7 +57,12 @@ first and drop `--python`.
 
 ```bash
 uv pip install --python /path/to/hermes/venv/bin/python hermes-msteams-bridge
-# or, with the Hermes venv activated:  pip install hermes-msteams-bridge
+```
+
+Or, with the Hermes venv activated:
+
+```bash
+pip install hermes-msteams-bridge
 ```
 
 **B. from GitHub (latest / pre-release):**
@@ -90,11 +95,16 @@ plugins:
     - teams_voice
 ```
 
-Then run:
+Then run the voice bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 
 ```bash
-hermes teams-voice serve --handler realtime    # voice bridge; also: streaming | echo | logging
-hermes gateway run                             # (separately) the Teams chat plane + cron
+hermes teams-voice serve --handler realtime
+```
+
+And, separately, the Teams chat plane + cron:
+
+```bash
+hermes gateway run
 ```
 
 ## Configure
@@ -170,9 +180,16 @@ docs pages. Contributor architecture notes live in
 
 ## Upgrade / uninstall
 
+Upgrade:
+
 ```bash
 uv pip install --upgrade hermes-msteams-bridge
-uv pip uninstall hermes-msteams-bridge     # then it disappears from `hermes plugins list`
+```
+
+Uninstall (it then disappears from `hermes plugins list`):
+
+```bash
+uv pip uninstall hermes-msteams-bridge
 ```
 
 ## How it loads

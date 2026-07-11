@@ -24,9 +24,13 @@ From the plugin's point of view **the connection is identical across all tiers**
 same local server, same HMAC WebSocket, same protocol. The tier only decides which
 StandIn identity and which limits apply.
 
-```text
- Teams call ⇄  StandIn media bridge  ──HMAC WS──▶  127.0.0.1:8443  (this plugin)
-   (hosted)     dials in with X-OpenClawTeamsBridge-Timestamp / -Signature headers
+```mermaid
+flowchart LR
+    Teams["Teams call"]
+    Bridge["StandIn media bridge<br/>(hosted)"]
+    Plugin["127.0.0.1:8443<br/>(this plugin)"]
+    Teams <--> Bridge
+    Bridge -->|"HMAC WS: dials in with<br/>X-OpenClawTeamsBridge-Timestamp / -Signature headers"| Plugin
 ```
 
 :::caution[Loopback by default]

@@ -2,11 +2,14 @@
 // https://komaa-com.github.io/hermes-msteams-bridge/ by .github/workflows/docs.yml.
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
+import mermaid from "astro-mermaid";
 
 export default defineConfig({
   site: "https://komaa-com.github.io",
   base: "/hermes-msteams-bridge",
   integrations: [
+    // Client-side Mermaid rendering (theme-aware, offline). Must come BEFORE starlight.
+    mermaid({ theme: "default", autoTheme: true }),
     starlight({
       title: "Microsoft Teams Bridge for Hermes Agent",
       description:

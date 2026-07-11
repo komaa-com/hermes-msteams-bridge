@@ -13,28 +13,17 @@ The plugin inverts the usual client/server intuition: **it is the server**. It b
 a small WebSocket server on loopback and waits. The StandIn media bridge joins the
 Teams call in the cloud and dials in, one WebSocket per call.
 
-```text
-                    Microsoft Teams call
-                           ⇅  (Teams media)
-                 ┌─────────────────────────┐
-                 │   StandIn media bridge  │   hosted service
-                 └───────────┬─────────────┘
-                             │  HMAC WebSocket (dials IN, one per call)
-                             │  ws://127.0.0.1:8443/voice/msteams/stream/{callId}
-                             ▼
-        ┌───────────────────────────────────────────┐
-        │        teams_voice plugin (this repo)     │
-        │                                           │
-        │  bridge_server.py     the WS server,      │
-        │                       auth + lifecycle    │
-        │  handlers.py          the call "brain"    │
-        │  call_session_base.py shared call state   │
-        └──────┬──────────────────────────┬─────────┘
-               │                          │
-               ▼                          ▼
-   realtime provider WS          the Hermes agent
-   (OpenAI / Azure Realtime,     (tools, consult/task,
-    24 kHz speech-to-speech)      minutes, images)
+```mermaid
+flowchart TD
+    Teams["Microsoft Teams call"]
+    Bridge["StandIn media bridge<br/>(hosted service)"]
+    Plugin["teams_voice plugin (this repo)<br/>bridge_server.py: WS server, auth + lifecycle<br/>handlers.py: the call brain<br/>call_session_base.py: shared call state"]
+    Provider["realtime provider WS<br/>OpenAI / Azure Realtime<br/>24 kHz speech-to-speech"]
+    Agent["the Hermes agent<br/>tools, consult/task, minutes, images"]
+    Teams <-->|Teams media| Bridge
+    Bridge -->|"HMAC WebSocket, one per call<br/>ws://127.0.0.1:8443/voice/msteams/stream/{callId}"| Plugin
+    Plugin --> Provider
+    Plugin --> Agent
 ```
 
 A second, much smaller path exists for outbound "call me back": the plugin makes an
@@ -49,26 +38,18 @@ The server also serves a plain `GET /health` (returns `ok`) for liveness checks.
 One connection is one call. The transport layer (`bridge_server.py`) owns every
 lifecycle edge so handlers never have to reason about half-open sockets:
 
-```text
- upgrade request
-   │  HMAC check: presence → timestamp window → constant-time
-   │  signature compare → single-use replay guard          ── fail → 401
-   │  connection caps (64 global / 8 per IP)               ── full → 503
-   │  duplicate live callId                                ── dup  → close (policy violation)
-   ▼
- connected, waiting
-   │  session.start must arrive within pre_start_timeout_s (10 s)
-   │  or the connection is reaped
-   │  body callId must equal the authenticated URL callId  ── mismatch → close
-   ▼
- started ── recording gate ── media flows
-   │           (no media-derived processing until recording.status = active,
-   │            unless require_recording_status is off)
-   │
-   ├── session.end received        → handler teardown, socket closed
-   ├── socket drops abruptly       → teardown STILL runs (idempotent `ended` flag)
-   ├── max_call_duration_s exceeded→ reaper closes the call (deadline fixed at start)
-   └── realtime provider drops     → handler closes the Teams call (no dead air)
+```mermaid
+flowchart TD
+    U["upgrade request"]
+    U -->|"HMAC fail / caps full (64 global, 8 per IP) / duplicate live callId"| Rej["401 / 503 / close (policy violation)"]
+    U --> C["connected, waiting"]
+    C -->|"no session.start within pre_start_timeout_s (10 s)"| Reap["connection reaped"]
+    C -->|"body callId != authenticated URL callId"| Mism["close (mismatch)"]
+    C --> S["started: recording gate, media flows<br/>no media-derived processing until recording.status = active<br/>(unless require_recording_status is off)"]
+    S -->|session.end received| T1["handler teardown, socket closed"]
+    S -->|socket drops abruptly| T2["teardown STILL runs (idempotent ended flag)"]
+    S -->|max_call_duration_s exceeded| T3["reaper closes the call (deadline fixed at start)"]
+    S -->|realtime provider drops| T4["handler closes the Teams call (no dead air)"]
 ```
 
 Two invariants worth internalizing:
@@ -84,19 +65,17 @@ Two invariants worth internalizing:
 `bridge_server.py` owns transport only. Everything intelligent lives behind
 `CallSessionHandler`, a small async interface the server dispatches into:
 
-```text
- inbound frame          CallSessionHandler callback
- ─────────────          ───────────────────────────
- session.start      →   on_session_start
- audio.frame        →   on_audio_frame
- video.frame        →   on_video_frame
- recording.status   →   on_recording_status
- participants       →   on_participants
- dtmf               →   on_dtmf
- assistant.say      →   on_assistant_say
- session.end/close  →   on_session_end
- ping               →   (answered by the server itself)
-```
+| Inbound frame | `CallSessionHandler` callback |
+|---|---|
+| `session.start` | `on_session_start` |
+| `audio.frame` | `on_audio_frame` |
+| `video.frame` | `on_video_frame` |
+| `recording.status` | `on_recording_status` |
+| `participants` | `on_participants` |
+| `dtmf` | `on_dtmf` |
+| `assistant.say` | `on_assistant_say` |
+| `session.end` / close | `on_session_end` |
+| `ping` | answered by the server itself |
 
 Four implementations ship, selected with `serve --handler`:
 
@@ -117,19 +96,16 @@ capabilities normally mean a new handler method or tool, not new transport code.
 The bridge wire format and the realtime model disagree on sample rate, so the
 handler resamples in both directions:
 
-```text
- caller (Teams)                                       realtime model
-      │                                                     ▲
-      │ audio.frame: PCM 16 kHz s16le mono,                 │ PCM 24 kHz
-      │ 20 ms / 640-byte frames, base64                     │
-      ▼                                                     │
- echo guard (RMS + playout clock) ── resample 16k → 24k ────┘
-                                                            │
-      ▲                                                     ▼
-      │ audio.frame back to StandIn          model audio deltas (24 kHz)
-      │ 16 kHz, re-chunked into                             │
-      │ 640-byte frames               resample 24k → 16k ───┘
-      │                               + expression / viseme cues
+```mermaid
+flowchart LR
+    Caller["caller (Teams)"]
+    Echo["echo guard<br/>(RMS + playout clock)"]
+    Model["realtime model"]
+    Down["resample 24k to 16k<br/>+ expression / viseme cues"]
+    Caller -->|"audio.frame: PCM 16 kHz s16le mono,<br/>20 ms / 640-byte frames, base64"| Echo
+    Echo -->|"resample 16k to 24k"| Model
+    Model -->|"model audio deltas (24 kHz)"| Down
+    Down -->|"audio.frame back to StandIn,<br/>16 kHz, re-chunked into 640-byte frames"| Caller
 ```
 
 Along the way the handler also runs barge-in (flush playback + `assistant.cancel` +
