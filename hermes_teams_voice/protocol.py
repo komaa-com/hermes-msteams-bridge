@@ -1,17 +1,14 @@
-"""Bridge wire protocol - GENERATED from protocol/schema.yaml - do not hand-edit.
+"""Bridge wire protocol - GENERATED from the shared wire-protocol schema, do not hand-edit.
 
-Python mirror of the .NET worker's ``Protocol.cs``. The companion .NET media
-worker and this driver exchange newline-free JSON text frames over one WebSocket
-per call, discriminated on a ``type`` field, camelCase keys. This module models
-the **inbound** messages (worker -> gateway) as dataclasses with a single
-:func:`decode` entry point, and provides **outbound** builders (gateway ->
-worker).
+The protocol the StandIn media bridge speaks with this plugin: newline-free JSON
+text frames over one WebSocket per call, discriminated on a ``type`` field,
+camelCase keys. This module models the **inbound** messages (bridge -> gateway)
+as dataclasses with a single :func:`decode` entry point, and provides **outbound**
+builders (gateway -> bridge).
 
-The contract is fixed by protocol/schema.yaml in the OpenClawBridge repo (the
-worker is the wire behavior of record); keep field names camelCase and additive
-- unknown fields are ignored and unknown message types degrade gracefully
-(older/newer peers interoperate). Regenerate with: python3 protocol/generate.py
-(in the OpenClawBridge repo).
+The contract is fixed by the StandIn media bridge (the wire behavior of record);
+keep field names camelCase and additive - unknown fields are ignored and unknown
+message types degrade gracefully (older/newer peers interoperate).
 """
 
 from __future__ import annotations

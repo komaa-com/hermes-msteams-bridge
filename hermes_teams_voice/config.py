@@ -4,8 +4,8 @@ Values come from (in priority order): the plugin's ``config.extra`` block in
 ``config.yaml`` (when wired through the gateway), then environment variables,
 then safe defaults. Secrets are never logged.
 
-The wire contract is fixed by the companion .NET media worker, so the header
-names, HMAC payload shape, and default path mirror that worker exactly — see
+The wire contract is fixed by the StandIn media bridge, so the header
+names, HMAC payload shape, and default path mirror it exactly - see
 ``protocol.py`` and ``hmac_auth.py``.
 """
 
@@ -15,7 +15,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-# Audio wire format — single source of truth, mirrors the worker (PCM 16 kHz,
+# Audio wire format - single source of truth, mirrors the bridge (PCM 16 kHz,
 # 16-bit signed, mono, little-endian; 20 ms / 640-byte frames).
 PCM_SAMPLE_RATE_HZ = 16_000
 FRAME_DURATION_MS = 20
