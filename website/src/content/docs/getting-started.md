@@ -37,8 +37,12 @@ Install into that interpreter:
 
 ```bash
 uv pip install --python /path/to/hermes/venv/bin/python hermes-msteams-bridge
-# or, with the Hermes venv activated:
-#   pip install hermes-msteams-bridge
+```
+
+Or, with the Hermes venv activated:
+
+```bash
+pip install hermes-msteams-bridge
 ```
 
 Optional faster audio resampling:
@@ -64,11 +68,16 @@ bundled/user-dir plugins. You must add `teams_voice` to `plugins.enabled` in
 `config.yaml` as above.
 :::
 
-Confirm Hermes now sees it:
+Confirm Hermes now sees it (`teams_voice` should appear in the list):
 
 ```bash
-hermes plugins list        # teams_voice should appear
-hermes teams-voice status  # prints resolved config + readiness
+hermes plugins list
+```
+
+Then check the resolved config + readiness:
+
+```bash
+hermes teams-voice status
 ```
 
 ## 3. Configure the shared secret + provider
