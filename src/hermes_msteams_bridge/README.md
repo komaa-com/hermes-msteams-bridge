@@ -71,7 +71,7 @@ which owns the shared session policy.
 ## Wire contract (the protocol StandIn speaks with the plugin)
 
 - **Handshake:** `HMAC-SHA256(sharedSecret, "{timestampMs}.{callId}")`, lowercase
-  hex, sent as the `X-OpenClawTeamsBridge-Timestamp` / `X-OpenClawTeamsBridge-Signature`
+  hex, sent as the `X-StandIn-Timestamp` / `X-StandIn-Signature` (legacy `X-OpenClawTeamsBridge-*` still accepted)
   headers on the WebSocket upgrade. ±60 s window; accepted `(callId, ts, sig)`
   tuples are single-use.
 - **Path:** `/voice/msteams/stream/{callId}` (the URL `callId` is authenticated and
