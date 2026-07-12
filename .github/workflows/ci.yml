@@ -28,4 +28,4 @@ jobs:
       # runtime self-skip via pytest.importorskip; the rest exercise the
       # pure-logic + handler wiring.
       - name: Run tests
-        run: pytest src/hermes_teams_voice/tests -q
+        run: pytest tests -q

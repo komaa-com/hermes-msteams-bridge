@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from hermes_teams_voice import meeting, realtime_tools
-from hermes_teams_voice.meeting import MeetingTranscript, post_minutes
+from hermes_msteams_bridge import meeting, realtime_tools
+from hermes_msteams_bridge.meeting import MeetingTranscript, post_minutes
 
 
 def test_transcript_add_and_render():

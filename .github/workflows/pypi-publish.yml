@@ -30,7 +30,7 @@ jobs:
           import glob, sys, zipfile
           whl = glob.glob("dist/*.whl")[0]
           names = zipfile.ZipFile(whl).namelist()
-          assert any(n.startswith("hermes_teams_voice/") for n in names), "hermes_teams_voice/ missing from wheel"
+          assert any(n.startswith("hermes_msteams_bridge/") for n in names), "hermes_msteams_bridge/ missing from wheel"
           assert any(n.endswith("plugin.yaml") for n in names), "plugin.yaml missing from wheel"
           print("wheel OK:", whl, f"({len(names)} files)")
           PY

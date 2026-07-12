@@ -7,10 +7,10 @@ import time
 
 import pytest
 
-from hermes_teams_voice import handlers
-from hermes_teams_voice.config import caller_allowed, resolve_config
-from hermes_teams_voice.outbound import OutboundError, place_call
-from hermes_teams_voice.realtime.openai_client import RealtimeConfig, RealtimeSession
+from hermes_msteams_bridge import handlers
+from hermes_msteams_bridge.config import caller_allowed, resolve_config
+from hermes_msteams_bridge.outbound import OutboundError, place_call
+from hermes_msteams_bridge.realtime.openai_client import RealtimeConfig, RealtimeSession
 
 
 # ── allowlist (AAD-only by default) ──────────────────────────────────────────

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
-from hermes_teams_voice import protocol as p
-from hermes_teams_voice import viseme_estimate as viz
+from hermes_msteams_bridge import protocol as p
+from hermes_msteams_bridge import viseme_estimate as viz
 
 
 def test_decode_inbound_session_start():
@@ -57,7 +57,7 @@ def test_blank_caller_fields_coerced_to_none():
 
 
 def test_minutes_docx_is_valid_openable(tmp_path):
-    from hermes_teams_voice.meeting_docx import write_minutes_docx
+    from hermes_msteams_bridge.meeting_docx import write_minutes_docx
 
     out = tmp_path / "m.docx"
     write_minutes_docx("Meeting minutes", "**Key Points**\n- shipped it\n**Decisions**\n- go", str(out))

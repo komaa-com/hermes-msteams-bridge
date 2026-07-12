@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from hermes_teams_voice import config as cfgmod
-from hermes_teams_voice.realtime import openai_client as rc
+from hermes_msteams_bridge import config as cfgmod
+from hermes_msteams_bridge.realtime import openai_client as rc
 
 
 def test_resolve_config_prefers_block_then_env(monkeypatch):

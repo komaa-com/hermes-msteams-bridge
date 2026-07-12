@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hermes_teams_voice.streaming_audio import UtteranceBuffer
+from hermes_msteams_bridge.streaming_audio import UtteranceBuffer
 
 FRAME = b"\x00\x00" * 320  # 640 bytes = one 20 ms frame
 LOUD = 0.5

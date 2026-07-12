@@ -6,9 +6,9 @@ import asyncio
 
 import pytest
 
-from hermes_teams_voice import handlers, meeting, protocol
-from hermes_teams_voice.config import resolve_config
-from hermes_teams_voice.realtime.openai_client import RealtimeConfig
+from hermes_msteams_bridge import handlers, meeting, protocol
+from hermes_msteams_bridge.config import resolve_config
+from hermes_msteams_bridge.realtime.openai_client import RealtimeConfig
 
 
 class FakeWS:
@@ -115,8 +115,8 @@ def test_realtime_group_gate_addressed_reply_after_bystander_is_delivered():
     Mechanism: the bystander turn sets _drop_response=True but creates no response,
     so no response.done fires to reset it; the next addressed turn's audio would
     then be dropped. The reply after a bystander turn must deliver real frames."""
-    from hermes_teams_voice.config import BYTES_PER_FRAME
-    from hermes_teams_voice.realtime.openai_client import REALTIME_SAMPLE_RATE_HZ
+    from hermes_msteams_bridge.config import BYTES_PER_FRAME
+    from hermes_msteams_bridge.realtime.openai_client import REALTIME_SAMPLE_RATE_HZ
 
     cfg = resolve_config(extra={"shared_secret": "s", "wake_phrases": ["aria"]})
     h = handlers.RealtimeCallSessionHandler(RealtimeConfig(api_key="x"), bridge_config=cfg)

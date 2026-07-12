@@ -13,7 +13,7 @@ in the repo, and the architecture is in
 - **Python ≥ 3.10.**
 - Editable install: `uv pip install -e .` (or plain `pip install -e .`).
   Optional fast audio: `uv pip install -e ".[numpy]"`.
-- Run the tests: `pytest src/hermes_teams_voice/tests/ -v`. They cover the wire protocol,
+- Run the tests: `pytest tests/ -v`. They cover the wire protocol,
   HMAC handshake + replay guard, echo guard, group-call gate, verbal interrupts,
   viseme estimation, vision budget, and audio helpers - no network, no Hermes needed.
 - Exercise the plugin locally with `TEAMS_VOICE_SHARED_SECRET=dev hermes teams-voice

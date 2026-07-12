@@ -8,8 +8,8 @@ import types
 
 import aiohttp
 
-from hermes_teams_voice.handlers import RealtimeCallSessionHandler
-from hermes_teams_voice.realtime.openai_client import RealtimeConfig, RealtimeSession
+from hermes_msteams_bridge.handlers import RealtimeCallSessionHandler
+from hermes_msteams_bridge.realtime.openai_client import RealtimeConfig, RealtimeSession
 
 
 class _FakeWS:

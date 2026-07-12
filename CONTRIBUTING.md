@@ -37,7 +37,7 @@ Tests use `pytest`:
 
 ```bash
 uv pip install pytest
-pytest src/hermes_teams_voice/tests/ -v
+pytest tests/ -v
 ```
 
 The suite covers the wire protocol, HMAC handshake + replay guard, the echo guard,
@@ -74,11 +74,11 @@ group declared in `pyproject.toml`:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_voice = "hermes_teams_voice"
+teams_voice = "hermes_msteams_bridge"
 ```
 
 The **key** (`teams_voice`) is the plugin name shown in `hermes plugins list` and
-used in `plugins.enabled`. The **value** (`hermes_teams_voice`) is the import
+used in `plugins.enabled`. The **value** (`hermes_msteams_bridge`) is the import
 package whose `register(ctx)` Hermes calls once, when the plugin is enabled.
 `register(ctx)` wires the `teams_voice_status` tool, the `teams-voice` CLI command,
 and the `on_session_end` hook.
@@ -93,7 +93,7 @@ Keep `plugin.yaml`'s `version` in sync with `pyproject.toml`'s `version`.
 
 Releases go to PyPI as `hermes-msteams-bridge`.
 
-1. Bump the version in **both** `pyproject.toml` and `src/hermes_teams_voice/plugin.yaml`.
+1. Bump the version in **both** `pyproject.toml` and `src/hermes_msteams_bridge/plugin.yaml`.
 2. Update the README/wiki if user-facing behavior changed.
 3. Tag the release and let CI build + publish, or build locally:
 

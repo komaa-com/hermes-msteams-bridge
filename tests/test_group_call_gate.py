@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hermes_teams_voice.group_call_gate import (
+from hermes_msteams_bridge.group_call_gate import (
     GroupCallGateConfig,
     is_addressed,
     resolve_group_call_gate_config,
