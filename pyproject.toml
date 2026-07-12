@@ -45,6 +45,7 @@ numpy = ["numpy>=1.21"]
 teams_voice = "hermes_teams_voice"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["hermes_teams_voice*"]
 exclude = ["hermes_teams_voice.tests*"]
 

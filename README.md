@@ -176,7 +176,7 @@ mode, the wire protocol): the
 and [**Wire Protocol**](https://komaa-com.github.io/hermes-msteams-bridge/wire-protocol/)
 docs pages. Contributor architecture notes live in
 [`DESIGN.md`](DESIGN.md); the module-level guide is in
-[`hermes_teams_voice/README.md`](hermes_teams_voice/README.md).
+[`src/hermes_teams_voice/README.md`](src/hermes_teams_voice/README.md).
 
 ## Upgrade / uninstall
 
