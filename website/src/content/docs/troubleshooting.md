@@ -32,7 +32,7 @@ Two independent requirements - **both** must hold:
 1. **Installed in the Hermes venv.** The plugin is imported in-process, so it must
    live in the *same* Python environment as Hermes. Verify:
    ```bash
-   /path/to/hermes/venv/bin/python -c "import hermes_teams_voice; print('ok')"
+   /path/to/hermes/venv/bin/python -c "import hermes_msteams_bridge; print('ok')"
    ```
    If that fails, reinstall targeting the Hermes interpreter (see
    [Getting Started](/hermes-msteams-bridge/getting-started/#1-install-into-the-same-venv-as-hermes)).

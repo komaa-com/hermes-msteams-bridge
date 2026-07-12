@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-msteams-bridge"
-version = "0.1.7"
+version = "0.2.0"
 description = "Microsoft Teams Bridge for Hermes Agent: voice/video (Conversational Video Interface) plugin"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,12 +42,11 @@ numpy = ["numpy>=1.21"]
 # is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
-teams_voice = "hermes_teams_voice"
+teams_voice = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["hermes_teams_voice*"]
-exclude = ["hermes_teams_voice.tests*"]
+include = ["hermes_msteams_bridge*"]
 
 [tool.setuptools.package-data]
-hermes_teams_voice = ["plugin.yaml"]
+hermes_msteams_bridge = ["plugin.yaml"]

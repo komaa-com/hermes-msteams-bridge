@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from hermes_teams_voice import realtime_tools
-from hermes_teams_voice.config import resolve_config
-from hermes_teams_voice.vision_budget import VisionBudget
+from hermes_msteams_bridge import realtime_tools
+from hermes_msteams_bridge.config import resolve_config
+from hermes_msteams_bridge.vision_budget import VisionBudget
 
 
 def test_vision_budget_caps_per_minute():

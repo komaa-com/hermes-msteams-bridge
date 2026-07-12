@@ -11,10 +11,10 @@ import time
 import aiohttp
 from aiohttp import WSMsgType
 
-from hermes_teams_voice import hmac_auth
-from hermes_teams_voice.bridge_server import BridgeServer, CallSessionHandler
-from hermes_teams_voice.config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig
-from hermes_teams_voice.handlers import StreamingCallSessionHandler
+from hermes_msteams_bridge import hmac_auth
+from hermes_msteams_bridge.bridge_server import BridgeServer, CallSessionHandler
+from hermes_msteams_bridge.config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig
+from hermes_msteams_bridge.handlers import StreamingCallSessionHandler
 
 SECRET = "test-secret"
 

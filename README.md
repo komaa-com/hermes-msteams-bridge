@@ -176,7 +176,7 @@ mode, the wire protocol): the
 and [**Wire Protocol**](https://komaa-com.github.io/hermes-msteams-bridge/wire-protocol/)
 docs pages. Contributor architecture notes live in
 [`DESIGN.md`](DESIGN.md); the module-level guide is in
-[`src/hermes_teams_voice/README.md`](src/hermes_teams_voice/README.md).
+[`src/hermes_msteams_bridge/README.md`](src/hermes_msteams_bridge/README.md).
 
 ## Upgrade / uninstall
 
@@ -199,10 +199,10 @@ package exposes:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_voice = "hermes_teams_voice"
+teams_voice = "hermes_msteams_bridge"
 ```
 
-Hermes imports `hermes_teams_voice` and calls its `register(ctx)`, registering the
+Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the
 `teams-voice` CLI, the status tool, and the session hook. Entry-point plugins are
 opt-in, so `teams_voice` must be in `plugins.enabled` (add it in `config.yaml`;
 `hermes plugins enable` does not see pip-installed plugins).

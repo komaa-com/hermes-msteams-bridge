@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from hermes_teams_voice import expression, verbal_interrupts
-from hermes_teams_voice.verbal_interrupts import is_verbal_interrupt
+from hermes_msteams_bridge import expression, verbal_interrupts
+from hermes_msteams_bridge.verbal_interrupts import is_verbal_interrupt
 
 WAKE = ("assistant", "hermes", "aria")
 

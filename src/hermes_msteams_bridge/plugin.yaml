@@ -1,5 +1,5 @@
 name: teams_voice
-version: 0.1.6
+version: 0.2.0
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
   HMAC-authenticated WebSocket that the hosted StandIn media bridge dials into,

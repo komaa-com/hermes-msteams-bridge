@@ -1,4 +1,4 @@
-# `hermes_teams_voice` - internal module guide
+# `hermes_msteams_bridge` - internal module guide
 
 This is the developer-facing map of the Python package. For install/usage, see the
 [repo README](../README.md); for architecture, see [DESIGN.md](../DESIGN.md); for the
@@ -150,11 +150,11 @@ unused). Pairing your own bot with StandIn is done in the StandIn dashboard - se
 hermes teams-voice status      # show resolved config + readiness
 hermes teams-voice serve --handler realtime   # run the bridge server (foreground)
 # or standalone:
-python -m hermes_teams_voice.bridge_server
+python -m hermes_msteams_bridge.bridge_server
 ```
 
 ## Test
 
 ```bash
-pytest hermes_teams_voice/tests/ -v
+pytest hermes_msteams_bridge/tests/ -v
 ```

@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 
-from hermes_teams_voice import hmac_auth, realtime_tools
-from hermes_teams_voice.echo_guard import EchoGuard
-from hermes_teams_voice.vision_store import StoredFrame, VisionStore
+from hermes_msteams_bridge import hmac_auth, realtime_tools
+from hermes_msteams_bridge.echo_guard import EchoGuard
+from hermes_msteams_bridge.vision_store import StoredFrame, VisionStore
 
 
 # ── echo guard ───────────────────────────────────────────────────────────────

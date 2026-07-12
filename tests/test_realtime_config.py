@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from hermes_teams_voice.realtime import openai_client as rc
+from hermes_msteams_bridge.realtime import openai_client as rc
 
 _ENV_KEYS = [
     "TEAMS_VOICE_REALTIME_BACKEND",

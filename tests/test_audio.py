@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-from hermes_teams_voice import audio
+from hermes_msteams_bridge import audio
 
 
 def _pcm(*samples: int) -> bytes:

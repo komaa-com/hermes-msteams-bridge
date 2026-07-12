@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from hermes_teams_voice import hmac_auth, protocol
+from hermes_msteams_bridge import hmac_auth, protocol
 
 
 def test_decode_session_start_blank_aad_is_none():

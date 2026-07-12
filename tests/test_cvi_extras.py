@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-from hermes_teams_voice import realtime_tools
-from hermes_teams_voice.realtime.openai_client import RealtimeConfig, RealtimeSession
-from hermes_teams_voice.vision_store import StoredFrame
+from hermes_msteams_bridge import realtime_tools
+from hermes_msteams_bridge.realtime.openai_client import RealtimeConfig, RealtimeSession
+from hermes_msteams_bridge.vision_store import StoredFrame
 
 
 def _session_capturing() -> tuple[RealtimeSession, list[dict]]:

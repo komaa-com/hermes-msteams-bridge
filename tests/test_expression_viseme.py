@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from hermes_teams_voice import expression as expr
-from hermes_teams_voice import viseme_estimate as viz
+from hermes_msteams_bridge import expression as expr
+from hermes_msteams_bridge import viseme_estimate as viz
 
 
 def test_expression_priority_and_defaults():

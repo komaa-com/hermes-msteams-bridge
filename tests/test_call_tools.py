@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 
-from hermes_teams_voice.call_tools import CallToolRunner
-from hermes_teams_voice.meeting import MeetingTranscript
-from hermes_teams_voice.vision_budget import VisionBudget
-from hermes_teams_voice.vision_store import VisionStore
+from hermes_msteams_bridge.call_tools import CallToolRunner
+from hermes_msteams_bridge.meeting import MeetingTranscript
+from hermes_msteams_bridge.vision_budget import VisionBudget
+from hermes_msteams_bridge.vision_store import VisionStore
 
 
 class _FakeConsult:
@@ -60,7 +60,7 @@ def test_call_me_back_without_caller():
 
 
 def test_agent_task_delivers_result_to_chat(monkeypatch):
-    import hermes_teams_voice.meeting as meeting
+    import hermes_msteams_bridge.meeting as meeting
 
     delivered = {}
 
