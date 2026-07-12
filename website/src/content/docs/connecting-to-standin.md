@@ -30,7 +30,7 @@ flowchart LR
     Bridge["StandIn media bridge<br/>(hosted)"]
     Plugin["127.0.0.1:8443<br/>(this plugin)"]
     Teams <--> Bridge
-    Bridge -->|"HMAC WS: dials in with<br/>X-OpenClawTeamsBridge-Timestamp / -Signature headers"| Plugin
+    Bridge -->|"HMAC WS: dials in with<br/>X-StandIn-Timestamp / -Signature headers"| Plugin
 ```
 
 :::caution[Loopback by default]

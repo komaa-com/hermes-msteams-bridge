@@ -36,8 +36,8 @@ callee's identity, not a `callId`:
 
 ```
 POST {worker_base_url}/api/calls
-X-OpenClawTeamsBridge-Timestamp: {ts}
-X-OpenClawTeamsBridge-Signature: HMAC-SHA256(shared_secret, "{ts}.{userObjectId}")   # lowercase hex
+X-StandIn-Timestamp: {ts}
+X-StandIn-Signature: HMAC-SHA256(shared_secret, "{ts}.{userObjectId}")   # lowercase hex
 Content-Type: application/json
 
 { "userObjectId": "<callee AAD object id>", "tenantId": "<tenant>" }

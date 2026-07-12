@@ -30,8 +30,8 @@ On the upgrade request, StandIn sends:
 
 | Header | Value |
 |---|---|
-| `X-OpenClawTeamsBridge-Timestamp` | the signing timestamp, in **milliseconds** |
-| `X-OpenClawTeamsBridge-Signature` | the signature (lowercase hex) |
+| `X-StandIn-Timestamp` | the signing timestamp, in **milliseconds** |
+| `X-StandIn-Signature` | the signature (lowercase hex) |
 
 The signature is:
 
@@ -42,8 +42,8 @@ HMAC-SHA256(shared_secret, "{timestampMs}.{callId}")   # lowercase hex
 Example:
 
 ```text
-X-OpenClawTeamsBridge-Timestamp: 1720598400000
-X-OpenClawTeamsBridge-Signature: 9f8c...   (hex digest of "1720598400000.abc123")
+X-StandIn-Timestamp: 1720598400000
+X-StandIn-Signature: 9f8c...   (hex digest of "1720598400000.abc123")
 ```
 
 Verification order (`verify_upgrade`): header presence → timestamp parse + window →

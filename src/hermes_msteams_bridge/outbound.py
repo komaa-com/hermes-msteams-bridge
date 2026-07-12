@@ -6,7 +6,7 @@ exactly like the WS bridge, except the signed payload is ``"{ts}.{userObjectId}"
 (the callee's AAD object id) rather than the callId.
 
 Contract (worker outbound-call endpoint):
-  headers: X-OpenClawTeamsBridge-Timestamp, X-OpenClawTeamsBridge-Signature  (must match the worker)
+  headers: X-StandIn-Timestamp/-Signature (+ legacy X-OpenClawTeamsBridge-* pair)  (must match the worker)
   body:    {"userObjectId": <aad id>, "tenantId": <tenant>}
   200 ->   {"callId": ..., "scenarioId": ...}
 """
@@ -19,7 +19,7 @@ import time
 from urllib.parse import urlparse
 
 from . import hmac_auth
-from .config import HEADER_SIGNATURE, HEADER_TIMESTAMP
+from .config import HEADER_SIGNATURE, HEADER_TIMESTAMP, LEGACY_HEADER_SIGNATURE, LEGACY_HEADER_TIMESTAMP
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,9 @@ async def place_call(
     headers = {
         HEADER_TIMESTAMP: str(ts),
         HEADER_SIGNATURE: signature,
+        # legacy pair kept during the X-StandIn-* transition (old workers verify these)
+        LEGACY_HEADER_TIMESTAMP: str(ts),
+        LEGACY_HEADER_SIGNATURE: signature,
         "Content-Type": "application/json",
     }
     body = {"userObjectId": user_object_id, "tenantId": tenant_id}

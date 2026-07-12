@@ -13,7 +13,13 @@ from aiohttp import WSMsgType
 
 from hermes_msteams_bridge import hmac_auth
 from hermes_msteams_bridge.bridge_server import BridgeServer, CallSessionHandler
-from hermes_msteams_bridge.config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig
+from hermes_msteams_bridge.config import (
+    HEADER_SIGNATURE,
+    HEADER_TIMESTAMP,
+    LEGACY_HEADER_SIGNATURE,
+    LEGACY_HEADER_TIMESTAMP,
+    TeamsVoiceConfig,
+)
 from hermes_msteams_bridge.handlers import StreamingCallSessionHandler
 
 SECRET = "test-secret"
@@ -70,6 +76,30 @@ async def _wait_for(predicate, timeout_s: float = 2.0) -> None:
     deadline = time.monotonic() + timeout_s
     while not predicate() and time.monotonic() < deadline:
         await asyncio.sleep(0.02)
+
+
+def test_legacy_headers_still_accepted():
+    """Pre-rename StandIn deployments send X-OpenClawTeamsBridge-*; they must keep working."""
+
+    async def run():
+        h = RecordingHandler()
+        server, url = await _serve(lambda: h)
+        try:
+            async with aiohttp.ClientSession() as client:
+                ts = hmac_auth._now_ms()
+                headers = {
+                    LEGACY_HEADER_TIMESTAMP: str(ts),
+                    LEGACY_HEADER_SIGNATURE: hmac_auth.sign(SECRET, ts, "c-legacy"),
+                }
+                ws = await client.ws_connect(f"{url}/c-legacy", headers=headers)
+                await ws.send_str(_start_frame("c-legacy"))
+                await _wait_for(lambda: h.started)
+                assert h.started
+                await ws.close()
+        finally:
+            await server.stop()
+
+    asyncio.run(run())
 
 
 def test_duplicate_call_id_rejects_new_socket_keeps_first():

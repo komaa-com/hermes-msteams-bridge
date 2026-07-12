@@ -21,7 +21,14 @@ from typing import Awaitable, Callable, Optional
 from aiohttp import WSCloseCode, WSMsgType, web
 
 from . import hmac_auth, protocol
-from .config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig, resolve_config
+from .config import (
+    HEADER_SIGNATURE,
+    HEADER_TIMESTAMP,
+    LEGACY_HEADER_SIGNATURE,
+    LEGACY_HEADER_TIMESTAMP,
+    TeamsVoiceConfig,
+    resolve_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +182,10 @@ class BridgeServer:
         ok, reason = hmac_auth.verify_upgrade(
             secret=self.config.shared_secret,
             call_id=call_id,
-            timestamp_header=request.headers.get(HEADER_TIMESTAMP),
-            signature_header=request.headers.get(HEADER_SIGNATURE),
+            timestamp_header=request.headers.get(HEADER_TIMESTAMP)
+            or request.headers.get(LEGACY_HEADER_TIMESTAMP),
+            signature_header=request.headers.get(HEADER_SIGNATURE)
+            or request.headers.get(LEGACY_HEADER_SIGNATURE),
             window_ms=self.config.hmac_window_ms,
             replay_guard=self._replay,
         )

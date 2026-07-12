@@ -27,8 +27,13 @@ DEFAULT_PATH = "/voice/msteams/stream"
 # HMAC upgrade header names — MUST match the companion worker byte-for-byte (it
 # sends these on the WS upgrade and reads them on the outbound-call endpoint).
 # Do not rename without a matching change in the worker, or the handshake fails.
-HEADER_TIMESTAMP = "X-OpenClawTeamsBridge-Timestamp"
-HEADER_SIGNATURE = "X-OpenClawTeamsBridge-Signature"
+HEADER_TIMESTAMP = "X-StandIn-Timestamp"
+HEADER_SIGNATURE = "X-StandIn-Signature"
+# Legacy header names (pre-rename). Still accepted on receive, and still SENT on
+# outbound worker calls alongside the new pair, so either side of the wire can
+# upgrade in any order during the transition.
+LEGACY_HEADER_TIMESTAMP = "X-OpenClawTeamsBridge-Timestamp"
+LEGACY_HEADER_SIGNATURE = "X-OpenClawTeamsBridge-Signature"
 
 
 @dataclass(frozen=True)
