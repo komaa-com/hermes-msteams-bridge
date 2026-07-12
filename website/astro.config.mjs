@@ -11,6 +11,15 @@ export default defineConfig({
     // Client-side Mermaid rendering (theme-aware, offline). Must come BEFORE starlight.
     mermaid({ theme: "default", autoTheme: true }),
     starlight({
+      head: [
+        // Google Analytics 4 (shared StandIn property; filter by hostname in GA).
+        { tag: "script", attrs: { async: true, src: "https://www.googletagmanager.com/gtag/js?id=G-M02N9C42XH" } },
+        {
+          tag: "script",
+          content:
+            "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-M02N9C42XH');",
+        },
+      ],
       title: "Microsoft Teams Bridge for Hermes Agent",
       description:
         "Microsoft Teams voice and video for a Hermes AI agent: realtime speech-to-speech, vision, avatar cues, meetings, and outbound call-backs via the StandIn media bridge.",
