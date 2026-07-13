@@ -35,6 +35,7 @@ TYPE_ASSISTANT_CANCEL = "assistant.cancel"
 TYPE_EXPRESSION = "expression"
 TYPE_SPEECH_MARKS = "speech.marks"
 TYPE_DISPLAY_IMAGE = "display.image"
+TYPE_DISPLAY_FRAME = "display.frame"
 TYPE_PONG = "pong"
 
 
@@ -266,6 +267,30 @@ def display_image(
         msg["mode"] = mode
     if caption is not None:
         msg["caption"] = caption
+    return msg
+
+
+def display_frame(
+    data_base64: str,
+    mime: str,
+    seq: int,
+    ts: int,
+    *,
+    width: int | None = None,
+    height: int | None = None,
+) -> dict[str, Any]:
+    """``display.frame`` - one frame of a continuous avatar-video stream onto the bot tile."""
+    msg: dict[str, Any] = {
+        "type": TYPE_DISPLAY_FRAME,
+        "seq": seq,
+        "ts": ts,
+        "mime": mime,
+        "dataBase64": data_base64,
+    }
+    if width is not None:
+        msg["width"] = width
+    if height is not None:
+        msg["height"] = height
     return msg
 
 
