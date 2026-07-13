@@ -19,6 +19,8 @@ export default defineConfig({
           content:
             "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-M02N9C42XH');",
         },
+        // Cloudflare Web Analytics beacon (privacy-friendly pageviews; complements GA above).
+        { tag: "script", attrs: { type: "module", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": '{"token": "49de4fe6d4e64fb6a5b18bbc7d133e88"}' } },
       ],
       title: "Microsoft Teams Bridge for Hermes Agent",
       description:
