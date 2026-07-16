@@ -1,16 +1,16 @@
-"""Viseme lip-shape estimation for the avatar mouth.
+"""Viseme timeline estimation for lip-sync.
 
-Produces a timeline of ``{tMs, visemeId}`` marks for the avatar mouth, using the
-Microsoft/Azure SSML viseme id set (0-21). Two timing sources:
+Produces a timeline of ``{tMs, visemeId}`` marks carrying Azure viseme ids
+(Microsoft/Azure SSML set, 0-21) on the wire for lip-sync. Two timing sources:
 
 * :func:`visemes_from_alignment` — real per-character timing (e.g. ElevenLabs
   ``/with-timestamps``); preferred when available.
 * :func:`estimate_visemes` — an even-spread estimate from text + audio duration;
   the always-available fallback.
 
-The worker blends these coarse shapes over its RMS-driven mouth openness, so a
-missing/empty timeline simply degrades to RMS-only lip-sync. Covers Latin; Arabic
-graphemes map to a neutral-open shape (full parity is a follow-up — see TODO).
+A missing or empty timeline simply means no viseme marks are emitted for that
+utterance. Covers Latin; Arabic graphemes map to a neutral-open shape (full
+parity is a follow-up — see TODO).
 """
 
 from __future__ import annotations
@@ -18,9 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import groupby
 
-# A representative subset of Azure viseme ids. The worker's ``ShapeForViseme``
-# maps the full 0-21 range; here we emit the ids the estimator can resolve from
-# text. 0 = silence.
+# A representative subset of Azure viseme ids. The wire carries the full 0-21
+# range; here we emit the ids the estimator can resolve from text. 0 = silence.
 VISEME_SILENCE = 0
 VISEME_AA = 2  # open vowel (a)
 VISEME_EE = 4  # wide (e/i)
@@ -105,7 +104,7 @@ def estimate_visemes(text: str, duration_ms: int) -> list[VisemeMark]:
     """Even-spread viseme timeline across ``duration_ms`` from ``text`` shape.
 
     Used when the TTS provider returns no per-character timing. Returns an empty
-    list for empty text or non-positive duration (worker falls back to RMS-only).
+    list for empty text or non-positive duration (no viseme marks are emitted).
     """
     if not text or duration_ms <= 0:
         return []

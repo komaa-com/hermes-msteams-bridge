@@ -1,7 +1,7 @@
 """Call-session handlers — the dialogue brains the bridge dispatches into.
 
 * :class:`EchoCallSessionHandler` — dependency-light smoke test: smiles on connect
-  and echoes the caller's audio so the worker's RMS lip-sync animates the avatar.
+  and echoes the caller's audio back on the ``audio.frame`` wire message.
 
 * :class:`RealtimeCallSessionHandler` — the full speech-to-speech brain:
   recording gate, **echo guard** (self-answer fix), bidirectional resampled audio,
@@ -323,7 +323,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             self._last_emotion = emotion
             await self._safe_expression(emotion)
         # Approximate realtime visemes: estimate over this delta, anchored at the
-        # current playout position. The worker blends them over RMS openness.
+        # current playout position, and send them as speech.marks on the wire.
         marks = viseme_estimate.estimate_visemes(text, max(len(text) * 60, 60))
         if marks:
             try:
