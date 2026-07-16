@@ -33,6 +33,10 @@ from .config import (
 logger = logging.getLogger(__name__)
 
 _MAX_FRAME_BYTES = 2 * 1024 * 1024  # 2 MB — accommodates a base64 JPEG video.frame
+# Outbound backpressure bound: past this much buffered on the worker socket, DROP
+# stale audio.frame rather than await the send and head-of-line-block the provider
+# recv-loop (which would wedge the whole call). Control frames are never dropped.
+_OUTBOUND_BACKPRESSURE_BYTES = 1 * 1024 * 1024  # 1 MB
 
 
 class CallSession:
@@ -58,8 +62,25 @@ class CallSession:
     def closed(self) -> bool:
         return self._ws.closed
 
-    async def _send(self, msg: dict) -> None:
+    def _write_buffer_bytes(self) -> int:
+        """Bytes currently buffered on the worker socket's transport, or 0 when it
+        cannot be read (a closing socket, or a transport that does not expose it) -
+        0 means "do not drop", degrading safely to the prior always-send behavior."""
+        writer = getattr(self._ws, "_writer", None)
+        transport = getattr(writer, "transport", None)
+        if transport is None:
+            return 0
+        try:
+            return transport.get_write_buffer_size()
+        except Exception:
+            return 0
+
+    async def _send(self, msg: dict, *, droppable: bool = False) -> None:
         if self._ws.closed:
+            return
+        if droppable and self._write_buffer_bytes() > _OUTBOUND_BACKPRESSURE_BYTES:
+            # Shed stale audio instead of head-of-line-blocking the provider stream
+            # on a slow/wedged worker socket (matches the TS/LiveKit siblings).
             return
         try:
             await self._ws.send_str(protocol.encode(msg))
@@ -70,7 +91,8 @@ class CallSession:
             raise
 
     async def send_audio_frame(self, seq: int, timestamp_ms: int, payload_base64: str) -> None:
-        await self._send(protocol.audio_frame(seq, timestamp_ms, payload_base64))
+        # Audio is the hot path and latest-wins: droppable under backpressure.
+        await self._send(protocol.audio_frame(seq, timestamp_ms, payload_base64), droppable=True)
 
     async def send_expression(self, emotion: str) -> None:
         await self._send(protocol.expression(emotion))
@@ -165,6 +187,15 @@ class BridgeServer:
         )
 
     async def stop(self) -> None:
+        # Drain live calls first: close each with GOING_AWAY so its read loop ends
+        # and per-call teardown runs (releasing the provider realtime session), then
+        # let the runner's graceful shutdown wait for those handlers to finish. Without
+        # this, a SIGTERM would hard-drop calls and leak (billed) provider sessions.
+        for session in list(self._live.values()):
+            try:
+                await session._ws.close(code=WSCloseCode.GOING_AWAY, message=b"server shutting down")
+            except Exception:  # noqa: BLE001 - best-effort drain; never block shutdown
+                pass
         if self._runner is not None:
             await self._runner.cleanup()
             self._runner = None
@@ -226,10 +257,15 @@ class BridgeServer:
     async def _read_loop(self, session: CallSession, handler: CallSessionHandler) -> None:
         loop = asyncio.get_event_loop()
         deadline: float | None = None  # max-duration horizon, set once the call starts
+        # Absolute pre-start deadline, fixed at connect: a peer past the HMAC upgrade
+        # that trickles frames (e.g. a ping every <timeout s) must NOT keep resetting
+        # the reap and hold a connection slot forever. The remaining time shrinks toward
+        # this instant regardless of inbound frames.
+        pre_start_deadline = loop.time() + self.config.pre_start_timeout_s
         try:
             while not session.closed:
                 if not session.started:
-                    timeout: float | None = self.config.pre_start_timeout_s
+                    timeout: float | None = pre_start_deadline - loop.time()
                 else:
                     # Absolute wall-clock cap on the call (max_call_duration_s > 0):
                     # a wedged call can't run forever and leak a live socket. The
