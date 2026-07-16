@@ -210,6 +210,17 @@ class BridgeServer:
         if not call_id:
             return web.Response(status=400, text="missing callId")
 
+        # Cheap connection caps BEFORE the HMAC verify (which records the single-use
+        # replay tuple). A cap rejection must be a retryable 503 that does NOT burn
+        # the handshake tuple — otherwise the immediate retry would 401 as a replay
+        # instead of getting the retryable 503 (BRIDGE-10). Matches the TS siblings'
+        # "cheap caps first, before crypto" ordering.
+        peer_ip = request.remote or "?"
+        if self._conn_count >= self.config.max_connections:
+            return web.Response(status=503, text="too many connections")
+        if self._conn_by_ip.get(peer_ip, 0) >= self.config.max_connections_per_ip:
+            return web.Response(status=503, text="too many connections")
+
         ok, reason = hmac_auth.verify_upgrade(
             secret=self.config.shared_secret,
             call_id=call_id,
@@ -224,35 +235,48 @@ class BridgeServer:
             logger.warning("[teams_voice] upgrade rejected call=%s: %s", call_id, reason)
             return web.Response(status=401, text="unauthorized")
 
-        peer_ip = request.remote or "?"
-        if self._conn_count >= self.config.max_connections:
-            return web.Response(status=503, text="too many connections")
-        if self._conn_by_ip.get(peer_ip, 0) >= self.config.max_connections_per_ip:
-            return web.Response(status=503, text="too many connections")
-
-        ws = web.WebSocketResponse(max_msg_size=_MAX_FRAME_BYTES, heartbeat=None)
-        await ws.prepare(request)
-
-        # Same callId already connected — close the NEW socket to avoid
-        # clobbering the live call (mirrors the TS driver's duplicate guard).
-        if call_id in self._live:
-            logger.warning("[teams_voice] rejected duplicate connection for %s", call_id)
-            await ws.close(code=WSCloseCode.POLICY_VIOLATION, message=b"duplicate-callId")
-            return ws
-
+        # Reserve the slots BEFORE the async ws.prepare(): two upgrades that both
+        # passed the cap check above would otherwise both prepare and only then
+        # increment, transiently exceeding the caps (BRIDGE-8). Rolled back on every
+        # early return that does not enter the read loop.
         self._conn_count += 1
         self._conn_by_ip[peer_ip] = self._conn_by_ip.get(peer_ip, 0) + 1
-        session = CallSession(call_id, ws)
-        self._live[call_id] = session
-        handler = self._handler_factory()
+        reserved = True
+
+        def _release() -> None:
+            nonlocal reserved
+            if not reserved:
+                return
+            reserved = False
+            self._conn_count = max(0, self._conn_count - 1)
+            n = self._conn_by_ip.get(peer_ip, 1) - 1
+            if n <= 0:
+                self._conn_by_ip.pop(peer_ip, None)  # del at 0: no slow map growth (BRIDGE-10)
+            else:
+                self._conn_by_ip[peer_ip] = n
+
         try:
-            await self._read_loop(session, handler)
+            ws = web.WebSocketResponse(max_msg_size=_MAX_FRAME_BYTES, heartbeat=None)
+            await ws.prepare(request)
+
+            # Same callId already connected — close the NEW socket to avoid
+            # clobbering the live call (mirrors the TS driver's duplicate guard).
+            if call_id in self._live:
+                logger.warning("[teams_voice] rejected duplicate connection for %s", call_id)
+                await ws.close(code=WSCloseCode.POLICY_VIOLATION, message=b"duplicate-callId")
+                return ws
+
+            session = CallSession(call_id, ws)
+            self._live[call_id] = session
+            handler = self._handler_factory()
+            try:
+                await self._read_loop(session, handler)
+            finally:
+                self._live.pop(call_id, None)
+                logger.debug("[teams_voice] connection closed %s", call_id)
+            return ws
         finally:
-            self._live.pop(call_id, None)
-            self._conn_count -= 1
-            self._conn_by_ip[peer_ip] = max(0, self._conn_by_ip.get(peer_ip, 1) - 1)
-            logger.debug("[teams_voice] connection closed %s", call_id)
-        return ws
+            _release()
 
     async def _read_loop(self, session: CallSession, handler: CallSessionHandler) -> None:
         loop = asyncio.get_event_loop()

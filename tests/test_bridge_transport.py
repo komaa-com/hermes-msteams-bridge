@@ -130,6 +130,41 @@ def test_duplicate_call_id_rejects_new_socket_keeps_first():
     asyncio.run(run())
 
 
+def test_cap_rejection_does_not_burn_replay_tuple():
+    """BRIDGE-10: a 503 (cap reached) must be retryable — it must NOT consume the
+    handshake's single-use replay tuple, or the immediate retry would 401 as a
+    replay instead of connecting once a slot frees."""
+
+    async def run():
+        h = RecordingHandler()
+        server, url = await _serve(lambda: h, _config(max_connections=1))
+        try:
+            async with aiohttp.ClientSession() as client:
+                ws1 = await client.ws_connect(f"{url}/c1", headers=_headers("c1"))
+                await ws1.send_str(_start_frame("c1"))
+                await _wait_for(lambda: h.started)
+                # Second call while the pool is full → 503, using a fixed tuple we reuse.
+                hdrs2 = _headers("c2")
+                try:
+                    await client.ws_connect(f"{url}/c2", headers=hdrs2)
+                    raise AssertionError("expected the capped upgrade to be rejected")
+                except aiohttp.WSServerHandshakeError as err:
+                    assert err.status == 503
+                # Free the slot, then retry c2 with the SAME tuple: it must connect,
+                # not 401 as a replay (the 503 above must not have recorded the tuple).
+                await ws1.close()
+                await _wait_for(lambda: server._conn_count == 0)
+                ws2 = await client.ws_connect(f"{url}/c2", headers=hdrs2)
+                await ws2.send_str(_start_frame("c2"))
+                await _wait_for(lambda: "c2" in h.started)
+                assert "c2" in h.started
+                await ws2.close()
+        finally:
+            await server.stop()
+
+    asyncio.run(run())
+
+
 def test_session_start_call_id_mismatch_closes():
     async def run():
         h = RecordingHandler()
