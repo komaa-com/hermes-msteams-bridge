@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import signal
 
 from .config import resolve_config
 
@@ -94,8 +95,22 @@ def teams_voice_command(args) -> int:
         async def _run() -> None:
             server = BridgeServer(config=cfg, handler_factory=factory)
             await server.start()
+            # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
+            # (Ctrl-C) set the stop event so server.stop() drains live calls -
+            # closing each with a reason so per-call teardown runs and the
+            # provider realtime session is released instead of leaking + billing
+            # until the provider times it out.
+            stop = asyncio.Event()
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.add_signal_handler(sig, stop.set)
+                except NotImplementedError:
+                    # add_signal_handler is unavailable on some platforms (Windows);
+                    # SIGINT there still raises KeyboardInterrupt, handled below.
+                    pass
             try:
-                await asyncio.Future()
+                await stop.wait()
             finally:
                 await server.stop()
 
