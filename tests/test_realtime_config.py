@@ -65,3 +65,17 @@ def test_openai_default_backend(monkeypatch):
 def test_unconfigured_when_no_key(monkeypatch):
     cfg = rc.realtime_config_from_env(block={})
     assert not cfg.configured
+
+
+def test_heartbeat_s_defaults_and_env_override(monkeypatch):
+    """Server WS heartbeat: default 20s (reaps half-open callers), env-overridable, env "0" disables."""
+    from hermes_msteams_bridge.config import resolve_config
+
+    monkeypatch.delenv("TEAMS_VOICE_HEARTBEAT_S", raising=False)
+    assert resolve_config({"shared_secret": "x"}).heartbeat_s == 20.0
+
+    monkeypatch.setenv("TEAMS_VOICE_HEARTBEAT_S", "45")
+    assert resolve_config({"shared_secret": "x"}).heartbeat_s == 45.0
+
+    monkeypatch.setenv("TEAMS_VOICE_HEARTBEAT_S", "0")  # explicit disable via env
+    assert resolve_config({"shared_secret": "x"}).heartbeat_s == 0.0

@@ -256,7 +256,13 @@ class BridgeServer:
                 self._conn_by_ip[peer_ip] = n
 
         try:
-            ws = web.WebSocketResponse(max_msg_size=_MAX_FRAME_BYTES, heartbeat=None)
+            # Server-initiated WS ping so a caller that dies uncleanly (half-open TCP / killed process, no
+            # close/FIN) is detected + torn down for the whole call, not just the pre-start / max-duration
+            # windows — else its slot + billed worker socket leak forever (max_call_duration_s defaults to 0).
+            ws = web.WebSocketResponse(
+                max_msg_size=_MAX_FRAME_BYTES,
+                heartbeat=self.config.heartbeat_s if self.config.heartbeat_s > 0 else None,
+            )
             await ws.prepare(request)
 
             # Same callId already connected — close the NEW socket to avoid
