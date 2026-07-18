@@ -51,6 +51,12 @@ class TeamsVoiceConfig:
     max_connections_per_ip: int = 8
     # A connection must send ``session.start`` within this window or it is reaped.
     pre_start_timeout_s: float = 10.0
+    # Server-initiated WebSocket ping interval, in seconds (0 = disabled). aiohttp sends a PING every
+    # ``heartbeat_s`` and tears the socket down when the PONG doesn't return, so a caller that dies UNCLEANLY
+    # (half-open TCP, killed process — no close/FIN) is reaped for the WHOLE call lifetime, not just the
+    # pre-start / max-duration windows. Without it a wedged half-open peer leaks its slot + billed worker
+    # socket until ``max_call_duration_s`` (which defaults to 0 = unlimited).
+    heartbeat_s: float = 20.0
     # Hard bound on a single call's wall-clock duration, in seconds (0 = unlimited).
     # Mirrors OpenClaw's maxDurationMs concept: a wedged/never-ending call is torn
     # down once it exceeds this, so it can't run forever and leak a live socket.
@@ -175,6 +181,9 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     max_call_duration_s = _coerce_float(
         extra.get("max_call_duration_s") or os.getenv("TEAMS_VOICE_MAX_CALL_DURATION_S", ""), 0.0
     )
+    heartbeat_s = _coerce_float(
+        extra.get("heartbeat_s") or os.getenv("TEAMS_VOICE_HEARTBEAT_S", ""), 20.0
+    )
     session_scope = (
         str(extra.get("session_scope") or "").strip()
         or os.getenv("TEAMS_VOICE_SESSION_SCOPE", "").strip()
@@ -197,6 +206,7 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         hmac_window_ms=window,
         require_recording_status=require_recording,
         max_call_duration_s=max_call_duration_s,
+        heartbeat_s=heartbeat_s,
         worker_base_url=worker_base_url,
         tenant_id=tenant_id,
         allowlist=allowlist,
