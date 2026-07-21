@@ -95,7 +95,13 @@ def verify_upgrade(
         return False, "timestamp outside window"
 
     expected = sign(secret, ts, call_id)
-    if not hmac.compare_digest(expected, str(signature_header).strip().lower()):
+    try:
+        sig_ok = hmac.compare_digest(expected, str(signature_header).strip().lower())
+    except (TypeError, ValueError):
+        # compare_digest raises TypeError on non-ASCII str input; a malformed
+        # header must read as a clean rejection, never an exception.
+        sig_ok = False
+    if not sig_ok:
         return False, "bad signature"
 
     if replay_guard is not None and not replay_guard.check_and_record(

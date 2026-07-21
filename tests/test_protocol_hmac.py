@@ -93,3 +93,14 @@ def test_hmac_replay_guard_single_use():
     assert guard.check_and_record("c1", ts, "sigA") is True
     assert guard.check_and_record("c1", ts, "sigA") is False  # replay rejected
     assert guard.check_and_record("c1", ts + 1, "sigB") is True  # fresh ts ok
+
+
+def test_hmac_verify_rejects_non_ascii_signature_without_raising():
+    # compare_digest raises TypeError on non-ASCII str - a malformed header must
+    # read as a clean "bad signature" rejection (-> 401), never an exception (-> 500).
+    secret, call_id, now = "s3cr3t", "c1", 1_000_000
+    ok, reason = hmac_auth.verify_upgrade(
+        secret=secret, call_id=call_id, timestamp_header=str(now),
+        signature_header="sign\u00e4ture", window_ms=60_000, now_ms=now,
+    )
+    assert not ok and reason == "bad signature"
