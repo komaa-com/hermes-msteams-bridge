@@ -17,6 +17,6 @@ before reporting, and mention the version you tested.
 
 ## Scope
 
-This repository is part of **StandIn** (a Komaa product, [komaa.com](https://komaa.com)). If you
+This repository is part of **StandIn** ([standin.komaa.com](https://standin.komaa.com)). If you
 believe you have found an issue in the hosted StandIn service itself, please report it here as well
 and we will route it appropriately.
