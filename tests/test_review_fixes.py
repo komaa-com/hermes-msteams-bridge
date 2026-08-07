@@ -41,17 +41,33 @@ def test_allowlist_name_match_opt_in():
 
 
 def test_pending_set_pop_roundtrip():
-    handlers._PENDING_OUTBOUND.clear()
-    handlers._pending_set("call-1", "the result")
-    assert handlers._pending_pop("call-1") == "the result"
-    assert handlers._pending_pop("call-1") is None  # single-use
+    from hermes_msteams_bridge import call_session_base as csb
+
+    csb._PENDING_OUTBOUND.clear()
+    csb._pending_set("call-1", "the result")
+    assert csb._pending_pop("call-1") == "the result"
+    assert csb._pending_pop("call-1") is None  # single-use
 
 
 def test_pending_entry_expires():
-    handlers._PENDING_OUTBOUND.clear()
-    handlers._PENDING_OUTBOUND["old"] = ("stale", time.monotonic() - 1.0)  # already expired
-    assert handlers._pending_pop("old") is None
-    assert "old" not in handlers._PENDING_OUTBOUND  # pruned
+    from hermes_msteams_bridge import call_session_base as csb
+
+    csb._PENDING_OUTBOUND.clear()
+    csb._PENDING_OUTBOUND["old"] = ("stale", time.monotonic() - 1.0)  # already expired
+    assert csb._pending_pop("old") is None
+    assert "old" not in csb._PENDING_OUTBOUND  # pruned
+
+
+def test_pending_survives_across_instances_via_file_store(tmp_path, monkeypatch):
+    """P1-3: the gateway process sets, the serve process pops — simulated by
+    forcing the file store on and clearing the in-process dict between ends."""
+    from hermes_msteams_bridge import call_session_base as csb
+
+    monkeypatch.setattr(csb, "_pending_dir", lambda: tmp_path)
+    csb._pending_set("call-x", "cross-process hello")
+    csb._PENDING_OUTBOUND.clear()  # a different process has no dict state
+    assert csb._pending_pop("call-x") == "cross-process hello"
+    assert csb._pending_pop("call-x") is None
 
 
 # ── outbound SSRF guard ──────────────────────────────────────────────────────

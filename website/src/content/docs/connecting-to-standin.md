@@ -83,8 +83,10 @@ For the free and subscription tiers you register a Microsoft Teams bot (Azure Bo
 and pair it with StandIn. The bot's Azure AD app needs Microsoft Graph calling
 permissions (`Calls.JoinGroupCall.All`, `Calls.AccessMedia.All`, and - for
 outbound call-back - `Calls.InitiateGroupCall.All`; plus `Chat.Read.All` /
-`ChatMessage.Read.Chat` for chat context and `Sites.ReadWrite.All` for SharePoint
-file attach). The exact pairing steps, tenant setup, and dashboard walkthrough live
+`ChatMessage.Read.Chat` for chat context; optionally `Sites.ReadWrite.All` ONLY if
+you later enable the large-file SharePoint delivery path - the standard minutes
+file card needs no Graph permission). The exact pairing steps, tenant setup,
+and dashboard walkthrough live
 in the StandIn docs:
 
 - Dashboard & pairing: [standin.komaa.com](https://standin.komaa.com)

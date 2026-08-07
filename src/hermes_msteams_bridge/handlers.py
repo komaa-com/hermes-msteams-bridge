@@ -23,24 +23,26 @@ from dataclasses import replace
 from pathlib import Path
 
 from . import audio, expression, group_call_gate, meeting, protocol, realtime_tools, verbal_interrupts, viseme_estimate
-from .agent_consult import AgentConsult
-from .meeting import MeetingTranscript
 from .bridge_server import CallSession, CallSessionHandler
-from .call_session_base import (
-    _PENDING_OUTBOUND,
-    BaseTeamsCallHandler,
-    _pending_pop,
-    _pending_set,
-)
+from .call_session_base import BaseTeamsCallHandler
 from .call_tools import CallToolRunner
 from .config import BYTES_PER_FRAME, FRAME_DURATION_MS, PCM_SAMPLE_RATE_HZ, TeamsVoiceConfig
 from .echo_guard import EchoGuard
-from .outbound import OutboundError, place_call
 from .realtime.openai_client import REALTIME_SAMPLE_RATE_HZ, RealtimeConfig, RealtimeSession
 from .vision_budget import VisionBudget
 from .vision_store import StoredFrame, VisionStore
 
 PCM_SAMPLE_RATE_HZ_MS = PCM_SAMPLE_RATE_HZ // 1000  # samples per ms (16) — duration math
+
+# Human names for the §3.8 ``languages:`` instruction clause; unknown codes
+# pass through verbatim (the model copes with ISO codes fine).
+_LANGUAGE_NAMES = {
+    "en": "English", "ar": "Arabic", "fr": "French", "de": "German",
+    "es": "Spanish", "it": "Italian", "nl": "Dutch", "pt": "Portuguese",
+    "tr": "Turkish", "ru": "Russian", "zh": "Chinese", "ja": "Japanese",
+    "ko": "Korean", "hi": "Hindi", "ur": "Urdu", "pl": "Polish",
+    "sv": "Swedish", "da": "Danish", "no": "Norwegian", "fi": "Finnish",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,9 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         self._last_speaker = ""  # from unmixed-audio speaker_name, for attribution
         self._auto_on = True  # server-VAD auto-response (off until 1:1 is confirmed)
         self._tools: CallToolRunner | None = None  # built once the session is established
+        # Set on every response.done — lets the walkthrough advance when the
+        # model actually finished speaking a step instead of guessing by length.
+        self._say_done = asyncio.Event()
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -135,8 +140,36 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         self._ambient_task = asyncio.create_task(self._ambient_vision_loop())
 
     def _build_instructions(self) -> str:
-        """Augment base instructions with roster name + group-gate etiquette."""
-        parts = [self._cfg.instructions]
+        """Augment base instructions with roster name + group-gate etiquette.
+
+        Identity comes FROM HERMES, not from this plugin: the operator's
+        SOUL.md (the same slot Hermes injects into every chat prompt) leads,
+        so "what is your name?" gets the same answer on a call as in chat.
+        The realtime ``instructions`` config remains the voice-behaviour layer
+        on top (brevity, delegation), not a second identity."""
+        from .hermes_api import soul_text
+
+        parts = []
+        soul = soul_text()
+        if soul:
+            parts.append(
+                "Your identity and persona (the same assistant the user knows "
+                f"from chat):\n{soul}\n\nYou are currently speaking on a live "
+                "Microsoft Teams voice call."
+            )
+        parts.append(self._cfg.instructions)
+        from .hermes_api import skills_index_text
+
+        skills = skills_index_text()
+        if skills:
+            parts.append(
+                "You also have the user's installed Hermes skills, the same ones "
+                "available in chat. You cannot run them inside this voice loop: "
+                "delegate skill work with hermes_agent_consult (quick) or "
+                "hermes_agent_task (long-running, result delivered afterwards), "
+                "and tell the caller what you're doing. Installed skills:\n"
+                f"{skills}"
+            )
         name = self._first_name()
         if name:
             parts.append(f"The caller's first name is {name}; address them by name naturally.")
@@ -145,12 +178,27 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             "If more than one person is on the call, stay silent unless someone "
             f"addresses you by name ({phrases}); in a one-on-one call respond normally."
         )
-        if getattr(self._cfg, "bilingual", False):
+        languages = tuple(getattr(self._cfg, "languages", ()) or ())
+        if languages:  # §3.8 (bilingual is resolved into this upstream)
+            names = ", ".join(_LANGUAGE_NAMES.get(code, code) for code in languages)
+            first = _LANGUAGE_NAMES.get(languages[0], languages[0])
             parts.append(
-                "You are bilingual in Arabic and English: detect the caller's language, "
-                "reply in that language, switch when they switch, and translate on request."
+                f"You speak these languages: {names}. Reply in the caller's language "
+                f"when it is one of them; otherwise politely continue in {first}. "
+                "Switch when the caller switches, and translate on request."
+            )
+        else:
+            parts.append(
+                "Detect the caller's language and reply in it; switch when they switch."
             )
         return " ".join(parts)
+
+    async def set_call_language(self, code: str) -> None:
+        """Pin ``languages`` to one code and push rebuilt instructions live
+        (persona, etiquette and skills clauses included) — D5 in action."""
+        self._cfg = replace(self._cfg, languages=(code,))
+        if self._rt is not None:
+            await self._rt.update_instructions(self._build_instructions())
 
     async def _close_call(self, reason: str) -> None:
         """Tear the Teams call down (mirror OpenClaw's closeCall / closeReason).
@@ -281,11 +329,17 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
                     frame = self._vision.latest(src)
                     if frame is None or frame.ts == self._ambient_last_ts.get(src):
                         continue
-                    if not self._vision_budget.try_consume():
-                        break  # over the per-minute vision cap
+                    if not self._vision_budget.try_consume_ambient():
+                        break  # ambient share spent; explicit reserve stays (D2)
                     self._ambient_last_ts[src] = frame.ts
+                    # D1: ship the attribution the frame already carries, not
+                    # bare pixels — the model learns WHOSE surface changed.
+                    # §3.3: the same label feeds the minutes' visual track
+                    # (scene-change only, so no extra vision spend).
+                    label = f"[ambient] New frame from {frame.describe()}."
+                    self._meeting.add_visual(frame.describe())
                     try:
-                        await self._rt.send_image(frame.data_url())
+                        await self._rt.send_image(frame.data_url(), caption=label)
                     except Exception:  # noqa: BLE001 — ambient, best-effort
                         pass
         except asyncio.CancelledError:
@@ -399,6 +453,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         self._transcript = ""
         self._last_emotion = None
         self._drop_response = False  # next turn starts fresh
+        self._say_done.set()  # a step's narration finished (walkthrough pacing)
 
     # ── tool dispatch ────────────────────────────────────────────────────────
 
@@ -421,8 +476,21 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
 
     Segments caller audio into utterances (VAD), transcribes them, applies the
     verbal-interrupt + group gate on the transcript, runs the Hermes agent, then
-    speaks the reply via TTS with expression + estimated visemes. Simpler than the
-    realtime path but works with any STT/TTS provider and no realtime model.
+    speaks the reply via TTS with expression + estimated visemes.
+
+    Provider support — both legs follow the host's config, per the official
+    Hermes feature docs:
+
+    * **STT** (``stt.provider``): Local Whisper (faster-whisper), Groq Whisper,
+      OpenAI Whisper, Mistral Voxtral, xAI Grok STT, or a custom command
+      provider — with Hermes's automatic fallback chain.
+    * **TTS** (``tts.provider``): Edge, OpenAI, ElevenLabs, MiniMax, Mistral,
+      Gemini, xAI, DeepInfra, NeuTTS, KittenTTS, Piper, or a custom command
+      provider. ElevenLabs additionally upgrades visemes to real timing.
+
+    The **realtime** handler (above) is the second call mode: provider-native
+    speech-to-speech (OpenAI/Azure Realtime), where audio never leaves the
+    realtime model, so the ``stt:``/``tts:`` blocks do not apply to it.
     """
 
     def __init__(self, bridge_config: TeamsVoiceConfig | None = None) -> None:
@@ -514,27 +582,24 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
         frame = self._vision.latest()
         if frame is None or frame.ts == self._last_frame_ts:
             return ""
-        if not self._vision_budget.try_consume():
+        # Auto-attach is ambient use — it must not starve an explicit look (D2).
+        if not self._vision_budget.try_consume_ambient():
             return ""
         self._last_frame_ts = frame.ts
-        try:
-            from agent.auxiliary_client import async_call_llm
+        from .hermes_api import vision_ask
 
-            resp = await async_call_llm(
-                task="vision",
-                messages=[{"role": "user", "content": [
-                    {"type": "text", "text": "In one short sentence, describe what the caller is sharing."},
-                    {"type": "image_url", "image_url": {"url": frame.data_url()}},
-                ]}],
-                max_tokens=120,
-            )
-            desc = (resp.choices[0].message.content if resp and resp.choices else "") or ""
-            desc = desc.strip()
-            return f"[The caller is sharing their {frame.describe()}: {desc}]\n" if desc else ""
-        except Exception:  # noqa: BLE001
+        desc = await vision_ask(
+            "In one short sentence, describe what the caller is sharing.",
+            [{"type": "image", "url": frame.data_url()}],
+            max_tokens=120,
+        )
+        if not desc:  # facade missing or the call failed — give the budget back
             self._vision_budget.refund()
-            logger.error("[teams_voice] streaming vision describe failed", exc_info=True)
             return ""
+        # §3.3: streaming already pays for a described scene — record it for
+        # the minutes' Presented/Shown section too.
+        self._meeting.add_visual(f"{frame.describe()}: {desc}")
+        return f"[The caller is sharing their {frame.describe()}: {desc}]\n"
 
     async def _handle_utterance(self, pcm: bytes) -> None:
         try:
@@ -569,18 +634,15 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             self._processing = False
 
     async def _transcribe(self, pcm: bytes) -> str:
-        from hermes_constants import get_hermes_home
-
+        from .hermes_api import hermes_home, transcribe
         from .streaming_audio import write_wav_pcm16
 
-        d = Path(get_hermes_home()) / "cache" / "teams_voice"
+        d = hermes_home() / "cache" / "teams_voice"
         d.mkdir(parents=True, exist_ok=True)
         wav = d / f"utt_{uuid.uuid4().hex}.wav"
         try:
             await asyncio.to_thread(write_wav_pcm16, pcm, str(wav), PCM_SAMPLE_RATE_HZ)
-            from tools.transcription_tools import transcribe_audio
-
-            res = await asyncio.to_thread(transcribe_audio, str(wav))
+            res = await asyncio.to_thread(transcribe, str(wav))
             return (res.get("transcript") or "").strip() if res.get("success") else ""
         finally:
             try:
@@ -589,7 +651,12 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
                 pass
 
     async def _speak(self, text: str) -> None:
-        text = (text or "").strip()
+        from .speech_text import strip_for_speech
+
+        # D8: agent replies are chat Markdown — strip syntax before ANY synth
+        # path (timed providers and the generic fallback alike) so bullets and
+        # asterisks are never read aloud.
+        text = strip_for_speech(text)
         session = self._session
         if not text or session is None:
             return
@@ -615,36 +682,33 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             self._out_ts += FRAME_DURATION_MS
 
     async def _synthesize(self, text: str) -> tuple[bytes, list[dict]] | None:
-        """TTS → (PCM 16k, viseme marks). Prefers ElevenLabs ``/with-timestamps``
-        (real per-character timing); falls back to the configured TTS + estimator."""
-        from . import elevenlabs_tts
+        """TTS → (PCM 16k, viseme marks). Supports every Hermes TTS provider:
+        the fallback dispatches the host's ``text_to_speech`` tool, so the
+        operator's ``tts.provider`` config (Edge/OpenAI/ElevenLabs/MiniMax/
+        Mistral/Gemini/xAI/DeepInfra/NeuTTS/KittenTTS/Piper/custom command
+        providers) applies unchanged. The viseme-*timing* upgrade is provider-
+        agnostic too: any provider registered with :mod:`.timed_tts` supplies
+        real per-character timing; all others get estimator visemes."""
+        from . import timed_tts
         from .streaming_audio import decode_bytes_to_pcm16k, decode_to_pcm16k
 
-        el_cfg = elevenlabs_tts.resolve_config()
-        if el_cfg:
-            res = await elevenlabs_tts.synth_with_timestamps(text, el_cfg)
-            if res:
-                mp3, timing = res
-                pcm16k = await asyncio.to_thread(decode_bytes_to_pcm16k, mp3)
-                if pcm16k:
-                    marks = viseme_estimate.visemes_from_alignment(timing)  # real timing
-                    return pcm16k, viseme_estimate.marks_to_payload(marks)
+        timed = await timed_tts.synth_with_timing(text)
+        if timed:
+            audio, timing = timed
+            pcm16k = await asyncio.to_thread(decode_bytes_to_pcm16k, audio)
+            if pcm16k:
+                marks = viseme_estimate.visemes_from_alignment(timing)  # real timing
+                return pcm16k, viseme_estimate.marks_to_payload(marks)
 
-        from hermes_constants import get_hermes_home
-        from tools.tts_tool import text_to_speech_tool
+        from .hermes_api import hermes_home, text_to_speech
 
-        d = Path(get_hermes_home()) / "cache" / "teams_voice"
+        d = hermes_home() / "cache" / "teams_voice"
         d.mkdir(parents=True, exist_ok=True)
         out = d / f"tts_{uuid.uuid4().hex}.mp3"
         try:
-            raw = await asyncio.to_thread(lambda: text_to_speech_tool(text, output_path=str(out)))
-            path = str(out)
-            try:
-                fp = json.loads(raw).get("file_path")
-                if fp:
-                    path = fp
-            except (TypeError, ValueError):
-                pass
+            # Off-loop: dispatch bridges async handlers with its own loop.
+            res = await asyncio.to_thread(text_to_speech, text, output_path=str(out))
+            path = res.get("file_path") or str(out)
             pcm16k = await asyncio.to_thread(decode_to_pcm16k, path)
             if not pcm16k:
                 return None

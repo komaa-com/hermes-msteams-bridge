@@ -34,7 +34,10 @@ def teams_voice_command(args) -> int:
     command = getattr(args, "teams_voice_command", None)
 
     if command == "status":
+        from .hermes_api import hermes_version_note, probe_boundaries
+
         cfg = resolve_config()
+        boundaries = probe_boundaries()
         print(
             json.dumps(
                 {
@@ -42,6 +45,10 @@ def teams_voice_command(args) -> int:
                     "host": cfg.host,
                     "port": cfg.port,
                     "path": cfg.path,
+                    "hermes": hermes_version_note(),
+                    "boundaries": boundaries,
+                    "boundaries_ok": all(b["ok"] for b in boundaries),
+                    "operational_ok": all(b.get("operational") is not False for b in boundaries),
                 },
                 indent=2,
             )
@@ -49,12 +56,32 @@ def teams_voice_command(args) -> int:
         return 0
 
     if command == "serve":
-        from .bridge_server import BridgeServer, CallSessionHandler
+        # D9: without a handler, Python's last-resort logger passes WARNING+
+        # only — every INFO session line (session.start, call ids, teardown)
+        # vanished from the serve log. Configure once, respect an existing setup.
+        import logging as _logging
+
+        if not _logging.getLogger().handlers:
+            _logging.basicConfig(
+                level=_logging.INFO,
+                format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            )
+        from .bridge_server import CallSessionHandler
+        from .hermes_api import hermes_version_note, probe_boundaries
 
         cfg = resolve_config()
         if not cfg.configured:
             print("error: no shared secret (set TEAMS_VOICE_SHARED_SECRET)")
             return 1
+        # Fail loudly at startup, not silently at turn 40: probe every Hermes
+        # surface the call brains depend on and name what's missing. Feature
+        # probes are the gate; the version line is advisory only.
+        print(hermes_version_note())
+        for b in probe_boundaries():  # each miss also logs at WARNING
+            if not b["ok"]:
+                print(f"warning: Hermes boundary missing: {b['surface']} ({b['detail']})")
+            elif b.get("operational") is False:
+                print(f"warning: present but not ready (check_fn failed): {b['surface']}")
         if args.host or args.port:
             from dataclasses import replace
 
@@ -93,8 +120,10 @@ def teams_voice_command(args) -> int:
             factory = lambda: StreamingCallSessionHandler(bridge_config=cfg)  # noqa: E731
 
         async def _run() -> None:
-            server = BridgeServer(config=cfg, handler_factory=factory)
-            await server.start()
+            from .service import VoiceBridgeService
+
+            service = VoiceBridgeService(config=cfg, handler_factory=factory)
+            await service.start()  # listener + reaper + durable-job resume
             # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
             # (Ctrl-C) set the stop event so server.stop() drains live calls -
             # closing each with a reason so per-call teardown runs and the
@@ -112,7 +141,7 @@ def teams_voice_command(args) -> int:
             try:
                 await stop.wait()
             finally:
-                await server.stop()
+                await service.stop()
 
         try:
             asyncio.run(_run())

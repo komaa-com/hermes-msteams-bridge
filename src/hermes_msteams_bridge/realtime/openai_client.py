@@ -58,8 +58,11 @@ class RealtimeConfig:
     # Caller-audio transcription (for wake words / verbal interrupts). Empty
     # string disables it (some deployments don't support the field).
     input_transcribe_model: str = "whisper-1"
-    # Bilingual Arabic/English mode (opt-in): pin the model to detect/mirror the
-    # caller's language and translate on request.
+    # Languages the assistant should handle (§3.8), e.g. ("en", "fr", "de").
+    # Empty = auto-detect and mirror the caller. ``bilingual`` is the
+    # deprecated alias for ("ar", "en").
+    languages: tuple[str, ...] = ()
+    # Bilingual Arabic/English mode (deprecated alias for languages=(ar, en)).
     bilingual: bool = False
 
     @property
@@ -126,6 +129,21 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
     if transcribe_model.lower() in ("none", "off", "disabled"):
         transcribe_model = ""
     bilingual = _pick(block, "bilingual", "TEAMS_VOICE_BILINGUAL", "").lower() in ("1", "true", "yes", "on")
+    # languages: a YAML list in the realtime block, or a comma-separated env.
+    raw_langs = block.get("languages")
+    if isinstance(raw_langs, (list, tuple)):
+        languages = tuple(str(v).strip().lower() for v in raw_langs if str(v).strip())
+    elif isinstance(raw_langs, str) and raw_langs.strip():
+        # YAML `languages: "en,fr"` — honour it instead of silently ignoring.
+        languages = tuple(p.strip().lower() for p in raw_langs.split(",") if p.strip())
+    else:
+        languages = tuple(
+            p.strip().lower()
+            for p in os.getenv("TEAMS_VOICE_LANGUAGES", "").split(",")
+            if p.strip()
+        )
+    if not languages and bilingual:  # deprecated alias
+        languages = ("ar", "en")
     is_azure = backend == "azure" or bool(azure_endpoint) or "azure.com" in explicit_url
 
     if is_azure:
@@ -155,6 +173,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
             silence_duration_ms=silence_duration_ms,
             input_transcribe_model=transcribe_model,
             bilingual=bilingual,
+            languages=languages,
         )
 
     return RealtimeConfig(
@@ -170,6 +189,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
         silence_duration_ms=silence_duration_ms,
         input_transcribe_model=transcribe_model,
         bilingual=bilingual,
+        languages=languages,
     )
 
 
@@ -187,6 +207,11 @@ class RealtimeSession:
         self._session: Any = None
         self._recv_task: Optional[asyncio.Task] = None
         self._closed = False
+        # In-flight tool tasks (see _dispatch): held so they are not garbage
+        # collected mid-run, and cancelled on close so a long tool cannot
+        # outlive the call.
+        self._tool_tasks: set[asyncio.Task] = set()
+        self._tool_serial = asyncio.Lock()  # one tool at a time, in arrival order
         self._close_fired = False  # guards on_close to a single delivery
         self._response_active = False  # True between response.created and response.done
         self._auto_response = True  # turn_detection.create_response (off in group mode)
@@ -256,10 +281,34 @@ class RealtimeSession:
         self._recv_task = asyncio.create_task(self._recv_loop())
         logger.info("[teams_voice] realtime connected model=%s", self._cfg.model)
 
+    def _spawn_tool_task(self, coro) -> None:
+        """Run a tool callback off the receive loop, tracked for teardown.
+
+        Serialized through ``_tool_serial`` so parallel function calls from
+        one response can't interleave their results (a fast tool would
+        otherwise trigger response.create before a slow sibling returned) —
+        the receive loop itself stays unblocked either way."""
+        async def _runner() -> None:
+            async with self._tool_serial:
+                await coro
+
+        task = asyncio.create_task(_runner())
+        self._tool_tasks.add(task)
+        task.add_done_callback(self._tool_tasks.discard)
+
     async def close(self) -> None:
         self._closed = True
         if self._recv_task:
             self._recv_task.cancel()
+        tools = list(self._tool_tasks)
+        for task in tools:  # no tool outlives the call
+            task.cancel()
+        if tools:
+            # Cancelled AND awaited: a walkthrough/browser/consult must be
+            # fully unwound before the sockets go away, or it can still fire a
+            # late display.image / request_say against a closing session.
+            await asyncio.gather(*tools, return_exceptions=True)
+        self._tool_tasks.clear()
         try:
             if self._ws is not None and not self._ws.closed:
                 await self._ws.close()
@@ -275,6 +324,18 @@ class RealtimeSession:
             return
         await self._send(
             {"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm24k).decode("ascii")}
+        )
+
+    async def update_instructions(self, instructions: str) -> None:
+        """Replace the session instructions mid-call (D5) via ``session.update``.
+
+        Lets a language or policy change apply to the running call instead of
+        waiting for the next one. Best-effort; no-op when closed or empty.
+        """
+        if self._closed or not (instructions or "").strip():
+            return
+        await self._send(
+            {"type": "session.update", "session": {"instructions": instructions}}
         )
 
     async def set_auto_response(self, enabled: bool) -> None:
@@ -341,21 +402,23 @@ class RealtimeSession:
         / greeting, where there is no caller turn to respond to)."""
         await self.send_user_text(instruction, respond=True)
 
-    async def send_image(self, image_url: str) -> None:
+    async def send_image(self, image_url: str, caption: str = "") -> None:
         """Push an ambient image into the conversation with NO forced response.
 
-        Keeps the realtime model continuously visually aware. Best-effort.
+        Keeps the realtime model continuously visually aware. ``caption``
+        attributes the frame (e.g. "Sara's shared screen") so the model knows
+        *whose* surface it is looking at, not just the pixels. Best-effort.
         """
         if self._closed or not image_url:
             return
+        content: list[dict] = []
+        if caption:
+            content.append({"type": "input_text", "text": caption})
+        content.append({"type": "input_image", "image_url": image_url})
         await self._send(
             {
                 "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_image", "image_url": image_url}],
-                },
+                "item": {"type": "message", "role": "user", "content": content},
             }
         )
 
@@ -450,11 +513,20 @@ class RealtimeSession:
             resp = evt.get("response") or {}
             for item in resp.get("output") or []:
                 if isinstance(item, dict) and item.get("type") == "function_call":
-                    await self._safe(
-                        self.on_function_call,
-                        item.get("name", ""),
-                        item.get("call_id", ""),
-                        item.get("arguments", "") or "{}",
+                    # Tools can run for many seconds (walkthrough, browser,
+                    # agent consult). Awaiting them HERE would block this
+                    # receive loop, so no audio deltas, barge-in
+                    # (speech_started), response.done or provider errors could
+                    # be processed while a tool ran — the tool's own
+                    # request_say would never be heard. Schedule instead, and
+                    # keep a reference so the task is not GC'd mid-flight.
+                    self._spawn_tool_task(
+                        self._safe(
+                            self.on_function_call,
+                            item.get("name", ""),
+                            item.get("call_id", ""),
+                            item.get("arguments", "") or "{}",
+                        )
                     )
             await self._safe(self.on_response_done)
         elif etype == "error":

@@ -23,8 +23,10 @@ import logging
 from .cli import register_cli as _register_cli
 from .cli import teams_voice_command as _teams_voice_command
 from .tools import (
+    CALL_USER_SCHEMA,
     TEAMS_VOICE_STATUS_SCHEMA,
     check_requirements,
+    handle_call_user,
     handle_teams_voice_status,
 )
 
@@ -45,8 +47,14 @@ def register(ctx) -> None:
     """Plugin entry point — register the status tool, CLI, and lifecycle hook.
 
     Called once by the plugin loader when ``teams_voice`` is enabled via
-    ``plugins.enabled`` in config.yaml.
+    ``plugins.enabled`` in config.yaml. The context is captured so the rest of
+    the package reaches Hermes only through its public services (``ctx.llm``,
+    ``ctx.dispatch_tool``) via the :mod:`.hermes_api` boundary.
     """
+    from . import hermes_api
+
+    hermes_api.set_plugin_context(ctx)
+
     ctx.register_tool(
         name="teams_voice_status",
         toolset="teams_voice",
@@ -54,6 +62,18 @@ def register(ctx) -> None:
         handler=handle_teams_voice_status,
         check_fn=check_requirements,
         emoji="📞",
+    )
+
+    # Chat-to-call (§3.6): reachable from any Hermes chat surface (the Teams
+    # adapter included) with zero new ingress — the agent calls the tool, the
+    # plugin places the call, the message is spoken on answer.
+    ctx.register_tool(
+        name="call_user",
+        toolset="teams_voice",
+        schema=CALL_USER_SCHEMA,
+        handler=handle_call_user,
+        check_fn=check_requirements,
+        emoji="📲",
     )
 
     ctx.register_cli_command(

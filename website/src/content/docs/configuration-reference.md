@@ -54,7 +54,7 @@ plugins:
 | `session_scope` | `TEAMS_VOICE_SESSION_SCOPE` | `per-call` | Agent memory continuity: `per-call` (fresh each call), `per-thread` (keyed by Teams thread), or `per-aad` (keyed by caller AAD id). |
 | `wake_phrases` | `TEAMS_VOICE_WAKE_PHRASES` | `assistant, hermes` | Group-call wake phrases - in a meeting the agent speaks only when addressed by one of these. |
 | `meeting_recap` | `TEAMS_VOICE_MEETING_RECAP` | `false` | Post end-of-call meeting minutes to the Teams chat. |
-| `share_point_site_id` | `TEAMS_SHAREPOINT_SITE_ID` | `""` | SharePoint (OneDrive) site id `host,siteGuid,webGuid` to attach the minutes `.docx` to the chat as a file card. Needs the bot app's Graph `Sites.ReadWrite.All`. Empty = text-only minutes. |
+| `share_point_site_id` | `TEAMS_SHAREPOINT_SITE_ID` | `""` | Optional; reserved for a future large-file SharePoint delivery path. The minutes `.docx` file card itself needs no SharePoint: it rides the Bot Framework attachment contract using the bot credentials (`TEAMS_CLIENT_ID`/`SECRET`/`TENANT_ID`). |
 | `max_vision_per_minute` | `TEAMS_VOICE_MAX_VISION_PER_MINUTE` | `30` | Per-call vision spend cap across `look_at_screen` + ambient push. `0` = unlimited. |
 
 :::note[List values]

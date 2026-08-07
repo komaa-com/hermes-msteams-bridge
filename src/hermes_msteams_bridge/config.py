@@ -84,8 +84,13 @@ class TeamsVoiceConfig:
     wake_phrases: tuple[str, ...] = ("assistant", "hermes")
     # Post end-of-call meeting minutes to the Teams chat (opt-in).
     meeting_recap: bool = False
-    # SharePoint (OneDrive) site id (host,siteGuid,webGuid) for attaching files /
-    # minutes to the chat; empty = text-only delivery.
+    # Root directory show_file may display from (containment). Empty =
+    # <hermes home>/workspace/teams_voice_show (a dedicated presentation dir,
+    # not the whole workspace). Everything outside it is refused (§3.1).
+    show_file_root: str = ""
+    # Optional; reserved for a future large-file SharePoint delivery path.
+    # The minutes .docx file card itself needs no SharePoint: it rides the Bot
+    # Framework attachment contract using the bot credentials.
     share_point_site_id: str = ""
 
     @property
@@ -114,20 +119,12 @@ def plugin_config_block() -> dict[str, Any]:
     Empty dict when unset or config can't be loaded. ``${VAR}`` references are
     already expanded by Hermes's config loader, so secrets can live in ``.env``
     and be referenced here (e.g. ``shared_secret: ${TEAMS_VOICE_SHARED_SECRET}``).
+    Delegates to the :mod:`.hermes_api` boundary (the config loader is one of
+    its documented residents).
     """
-    try:
-        from hermes_cli.config import load_config
+    from .hermes_api import plugin_config_block as _block
 
-        config = load_config()
-        node = (
-            config.get("plugins", {})
-            .get("entries", {})
-            .get("teams_voice", {})
-            .get("config", {})
-        )
-        return node if isinstance(node, dict) else {}
-    except Exception:  # noqa: BLE001 — config is optional; fall back to env
-        return {}
+    return _block()
 
 
 def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
@@ -193,10 +190,6 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     meeting_recap = str(
         extra.get("meeting_recap", "") or os.getenv("TEAMS_VOICE_MEETING_RECAP", "")
     ).strip().lower() in ("1", "true", "yes", "on")
-    _sp = str(extra.get("share_point_site_id") or extra.get("sharePointSiteId") or "").strip()
-    if _sp.startswith("${"):  # an unexpanded ${VAR} reference — ignore, use env
-        _sp = ""
-    share_point_site_id = _sp or os.getenv("TEAMS_SHAREPOINT_SITE_ID", "").strip()
 
     return TeamsVoiceConfig(
         shared_secret=shared_secret,
@@ -214,11 +207,22 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         session_scope=session_scope,
         wake_phrases=wake or ("assistant", "hermes"),
         meeting_recap=meeting_recap,
-        share_point_site_id=share_point_site_id,
+        show_file_root=(
+            str(extra.get("show_file_root") or "").strip()
+            or os.getenv("TEAMS_VOICE_SHOW_FILE_ROOT", "").strip()
+        ),
+        share_point_site_id=_resolve_sharepoint(extra),
         allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_VOICE_ALLOWLIST_ALLOW_NAMES"),
         allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_VOICE_ALLOW_REMOTE_WORKER"),
         allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_VOICE_ALLOW_ALL"),
     )
+
+
+def _resolve_sharepoint(extra: Mapping[str, Any]) -> str:
+    _sp = str(extra.get("share_point_site_id") or extra.get("sharePointSiteId") or "").strip()
+    if _sp.startswith("${"):  # an unexpanded ${VAR} reference — ignore, use env
+        _sp = ""
+    return _sp or os.getenv("TEAMS_SHAREPOINT_SITE_ID", "").strip()
 
 
 def caller_allowed(config: "TeamsVoiceConfig", aad_id: str | None, display_name: str | None) -> bool:

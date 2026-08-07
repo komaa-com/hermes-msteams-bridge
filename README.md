@@ -16,7 +16,8 @@ The plugin (name **`teams_voice`**) hosts the HMAC-authenticated WebSocket bridg
 the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
-bilingual EN/AR, meeting recap/minutes, and SharePoint (OneDrive) file send.
+bilingual EN/AR, and meeting recap/minutes (posted to the chat, with a local
+`.docx` artifact).
 
 ## Getting started
 
@@ -125,14 +126,14 @@ plugins:
         host: 127.0.0.1
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
-        share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: attach files/minutes to the chat
         meeting_recap: true                # optional: post minutes at call end
+        # share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: future large-file path (file card itself needs only the bot creds)
         allowlist: []                      # caller AAD object ids (empty = deny all inbound callers)
         allow_all: false                   # explicit opt-in: accept any caller when the allowlist is empty
         allowlist_allow_names: false       # also match the allowlist against display names (weaker; default off)
         session_scope: per-call            # per-call | per-thread | per-aad
         wake_phrases: [assistant, hermes]  # group-call wake phrases (speak only when addressed)
-        bilingual: false                   # pin the realtime model to Arabic/English
+        show_file_root: ""                 # show_file containment root (default <hermes home>/workspace/teams_voice_show)
         # Outbound "call me back" (StandIn places the return call over its loopback endpoint):
         worker_base_url: http://127.0.0.1:9440   # loopback endpoint StandIn exposes for place-call
         allow_remote_worker: false         # refuse a non-loopback place-call target unless set
@@ -147,6 +148,7 @@ plugins:
           vad_threshold: 0.5
           prefix_padding_ms: 300
           silence_duration_ms: 500
+          languages: []                  # e.g. [en, fr, de, ar]; empty = auto-detect and mirror
 ```
 
 > **Public OpenAI** instead of Azure: set `backend: openai`, `model: gpt-realtime`,
@@ -161,7 +163,6 @@ also run `hermes gateway run`):
 # Voice bridge
 TEAMS_VOICE_SHARED_SECRET=<same value you set in StandIn>
 AZURE_FOUNDRY_API_KEY=<azure-openai-key>                 # or OPENAI_API_KEY for public OpenAI
-TEAMS_SHAREPOINT_SITE_ID=<host>,<siteGuid>,<webGuid>     # optional (needs Graph Sites.ReadWrite.All)
 
 # Teams chat plane (platforms/teams) - only if you run the gateway:
 TEAMS_CLIENT_ID=<bot-app-id>
@@ -220,9 +221,11 @@ distribution so you don't have to fork Hermes. Install it on **vanilla** Hermes;
 also keep a bundled `teams_voice` (same name → the entry-point would shadow it).
 
 - **Voice/CVI** works fully on vanilla Hermes.
-- **Chat-plane governance + SharePoint file attach** depend on the enhanced
-  `plugins/platforms/teams` adapter; without it the plugin **degrades gracefully**
-  (e.g. meeting minutes post as text instead of a SharePoint file card).
+- **Meeting minutes** post to the chat with the Word `.docx` attached as a
+  native file card (the same Bot Framework attachment contract the Hermes
+  Teams adapter uses; needs the chat plane's `TEAMS_CLIENT_ID`/`SECRET`/
+  `TENANT_ID`), degrading to text when creds are absent; a Word-openable
+  copy is always kept under the Hermes workspace.
 
 ## License
 

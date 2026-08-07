@@ -15,8 +15,8 @@ this repo; the hosted StandIn media bridge handles the Teams media so these feat
   any STT/TTS provider (needs `ffmpeg`).
 - **Barge-in** - the caller can interrupt the bot mid-reply; playback is flushed
   (`assistant.cancel`) and the model response is cancelled immediately.
-- **Verbal interrupts (EN/AR)** - deterministic "stop" / "توقف" / "⟨name⟩, stop"
-  detection that cuts playback even without VAD.
+- **Verbal interrupts (EN/AR/FR/DE)** - deterministic "stop" / "توقف" / "arrête" /
+  "stopp" / "⟨name⟩, stop" detection that cuts playback even without VAD.
 - **Recording gate** - unless `require_recording_status` is off, no media-derived
   data is processed until Teams recording is `active`. Greetings fire **on answer**,
   not while ringing.
@@ -55,12 +55,14 @@ this repo; the hosted StandIn media bridge handles the Teams media so these feat
 - **Expression** - a cheap lexical classifier infers `neutral` / `happy` / `sad` /
   `surprised` from the reply text and sends an `expression` cue; a `thinking` face
   shows while a tool runs.
-- **Visemes** - a viseme timeline (`speech.marks`) drives lip-sync; the streaming
-  path uses **real ElevenLabs `/with-timestamps`** timing when available, otherwise
-  an estimator.
+- **Visemes** - a viseme timeline (`speech.marks`) drives lip-sync. Timing is a
+  provider-agnostic registry: any timing-capable TTS provider can supply real
+  per-character timing (ElevenLabs `/with-timestamps` is the built-in one, used
+  only when it is the operator's selected `tts.provider`); every other provider
+  gets estimator visemes.
 - **`show_to_caller`** - generate an image and render it on the bot's own video tile
-  (`display.image`), fullscreen or PiP, with an optional caption and a paced
-  slideshow.
+  (`display.image`), fullscreen with an optional caption and a paced,
+  interruption-aware slideshow.
 
 ## Realtime tools
 
@@ -69,9 +71,12 @@ The realtime model is given these function tools (dispatched by the handler):
 | Tool | What it does |
 |---|---|
 | `hermes_agent_consult` | Delegate a question/action to the Hermes agent inline; returns a short spoken result. |
-| `hermes_agent_task` | Run a long background job; acknowledge now, deliver the result via a call-back. |
+| `hermes_agent_task` | Run a long background job; acknowledge now, deliver the result to the Teams chat (call-back as fallback), durable across restarts. |
 | `look_at_screen` | Look at the shared screen/camera (live or history) and answer. |
 | `show_to_caller` | Generate an image and show it on the bot's tile. |
+| `show_file` | Display a real workspace file (image / PDF page / Office page) on the tile - workspace-contained, fullscreen. |
+| `show_web_page` | Browse a public URL with the host's browser and show the actual page on the tile. |
+| `walkthrough` | Step-by-step guided tour: show a file per step, speak the explanation, stop on interruption. |
 | `call_me_back` | Place an outbound Teams call back to deliver a pending result. |
 | `post_meeting_minutes` | Summarize the meeting and post minutes to the Teams chat. |
 
@@ -81,16 +86,34 @@ The realtime model is given these function tools (dispatched by the handler):
   action items) to the Teams chat when the call ends.
 - **On-demand minutes** - `post_meeting_minutes` or "summarize the meeting" posts
   minutes mid-call.
-- **`.docx` to SharePoint** - with `share_point_site_id` set, minutes are uploaded to
-  SharePoint (OneDrive) and attached to the chat as a native file card; text-only
-  otherwise.
+- **`.docx` file card** - the minutes are attached to the Teams chat as a
+  Word document (delivered over the same Bot Framework attachment contract the
+  Hermes Teams adapter uses - needs `TEAMS_CLIENT_ID`/`SECRET`/`TENANT_ID`,
+  which the chat plane already sets); text-only fallback when unavailable. A
+  Word-openable copy is always saved under the Hermes workspace
+  (`workspace/teams_minutes/`). Inline attachments cap at 4 MB;
+  `share_point_site_id` is reserved for a future large-file SharePoint path.
+
+- **Chat-to-call** (`call_user` agent tool) - ask in any Hermes chat surface
+  ("call me and explain X"); the bot places the Teams call and speaks the message
+  on answer. Deny-by-default: the callee must be on an explicit allowlist.
+- **No-answer fallback** - a placed call that never rings through gets its
+  message posted to the originating Teams chat instead of being lost (applies
+  to chat-to-call, call-backs, and background-task deliveries).
+- **"Watch it work"** - hand the agent a background task mid-call and the tile
+  shows a live progress panel until the result is ready.
+- **Chat/call parity** - the call answers with the SAME identity (`SOUL.md`) and
+  knows the SAME installed skills as Hermes chat, delegating skill work to the
+  agent.
 
 ## Telephony & languages
 
 - **DTMF / IVR** - keypad presses are surfaced to the model so it can run "press 1
   to…" flows.
-- **Bilingual EN/AR** (`bilingual`) - the model detects and mirrors the caller's
-  language and translates on request.
+- **Languages** (`languages: [en, fr, de, ar]`) - the model replies in the
+  caller's language when it is configured (empty list = auto-detect and mirror);
+  `bilingual` remains as a deprecated alias for `[ar, en]`. STT/TTS language
+  selection follows the host's `stt:`/`tts:` provider config.
 
 ## Sessions
 

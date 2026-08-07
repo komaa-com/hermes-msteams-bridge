@@ -174,8 +174,8 @@ def test_streaming_session_end_cancels_inflight_task():
 
 
 def test_streaming_vision_auto_attach(monkeypatch):
-    # Needs the Hermes host (agent.auxiliary_client) — skipped on a standalone install.
-    ac = pytest.importorskip("agent.auxiliary_client")
+    # Vision now flows through the hermes_api boundary (ctx.llm) — host-agnostic.
+    import hermes_msteams_bridge.hermes_api as hermes_api
 
     h = handlers.StreamingCallSessionHandler(bridge_config=resolve_config(extra={"shared_secret": "s"}))
     sess = FakeSession()
@@ -185,19 +185,11 @@ def test_streaming_vision_auto_attach(monkeypatch):
         mime="image/jpeg", data_base64="ZZ", participant_id="p", participant_name="Bob")))
     assert h._vision.latest() is not None  # ingested
 
-    class _Msg:
-        content = "a budget spreadsheet"
+    async def fake_vision_ask(instructions, blocks, *, max_tokens=400, purpose=""):
+        assert blocks[0]["type"] == "image"
+        return "a budget spreadsheet"
 
-    class _Choice:
-        message = _Msg()
-
-    class _Resp:
-        choices = [_Choice()]
-
-    async def fake_llm(**kw):
-        return _Resp()
-
-    monkeypatch.setattr(ac, "async_call_llm", fake_llm)
+    monkeypatch.setattr(hermes_api, "vision_ask", fake_vision_ask)
     ctx = asyncio.run(h._vision_context())
     assert "budget spreadsheet" in ctx and "sharing" in ctx.lower()
     assert asyncio.run(h._vision_context()) == ""  # no new frame → no re-attach

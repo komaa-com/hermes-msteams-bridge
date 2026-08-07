@@ -22,10 +22,75 @@ jobs:
       - name: Install package + test deps
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[numpy]" pytest
+          pip install -e ".[numpy,documents]" pytest
 
       # Standalone run (no Hermes host): the few tests that need the Hermes
       # runtime self-skip via pytest.importorskip; the rest exercise the
       # pure-logic + handler wiring.
       - name: Run tests
+        run: pytest tests -q
+
+  # Contract tests against a real Hermes host (§9.1 item 3 / backlog phase 1a).
+  # The boundary probe must find every surface on the tested releases; `main`
+  # is an allowed-to-fail early-warning canary for upcoming breakage.
+  hermes-contract:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - hermes-ref: "hermes-agent==0.19.0"   # PyPI floor
+            allow-failure: false
+          - hermes-ref: "git+https://github.com/NousResearch/hermes-agent.git@3671c9f"  # tested runtime (0.20.0 lineage)
+            allow-failure: false
+          - hermes-ref: "git+https://github.com/NousResearch/hermes-agent.git"  # main canary
+            allow-failure: true
+    continue-on-error: ${{ matrix.allow-failure }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Hermes host + plugin
+        run: |
+          python -m pip install --upgrade pip
+          pip install "${{ matrix.hermes-ref }}"
+          pip install -e ".[numpy,documents]" pytest
+
+      - name: Boundary probe + PluginContext contract
+        run: |
+          python - <<'PY'
+          import inspect, json, sys
+          from hermes_msteams_bridge.hermes_api import hermes_version_note, probe_boundaries
+          print(hermes_version_note())
+          results = probe_boundaries()
+          print(json.dumps(results, indent=2))
+          # The ONLY rows allowed to miss are the two ctx rows (no plugin was
+          # loaded by a live host in this job); everything else must resolve.
+          ALLOWED_MISSING = {"ctx (PluginContext captured)", "ctx.llm (vision + consults)"}
+          hard = [r for r in results if not r["ok"] and r["surface"] not in ALLOWED_MISSING]
+          if hard:
+              print("HARD FAILURES:", [r["surface"] for r in hard]); sys.exit(1)
+          # ctx.llm contract, validated directly against the facade class the
+          # host hands to plugins (the boundary the migration stands on):
+          from agent.plugin_llm import PluginLlm, PluginLlmImageInput
+          sig = inspect.signature(PluginLlm.acomplete_structured)
+          for param in ("instructions", "input", "json_schema", "max_tokens", "purpose"):
+              assert param in sig.parameters, f"acomplete_structured lost param: {param}"
+          assert inspect.iscoroutinefunction(PluginLlm.acomplete_structured)
+          for fld in ("url", "data", "mime_type"):
+              assert fld in PluginLlmImageInput.__dataclass_fields__, f"image input lost field: {fld}"
+          # dispatch path: the plugin's own wrapper must find the registered tool.
+          from hermes_msteams_bridge.hermes_api import _registry_entry
+          assert _registry_entry("text_to_speech") is not None
+          assert _registry_entry("image_generate") is not None
+          print("PluginContext contract OK")
+          PY
+
+      # Host-conditional suite: bare-runtime tests self-skip when Hermes is
+      # importable; host-contract tests self-skip when it is not.
+      - name: Run full test suite against the host
         run: pytest tests -q

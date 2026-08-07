@@ -22,9 +22,15 @@ class AgentConsult:
     """Lazily-built, reusable one-shot agent runner for a call."""
 
     def __init__(self, model: str | None = None, session_id: str | None = None) -> None:
+        import threading
+
         self._model = model
         self._session_id = session_id  # session continuity (per-thread/per-aad scope)
         self._agent = None  # run_agent.AIAgent, built on first use
+        # Serialize consults: AIAgent is not concurrency-safe, and a timed-out
+        # consult's thread keeps running — the lock stops a later consult from
+        # sharing (and corrupting) the same agent while it does.
+        self._run_lock = threading.Lock()
 
     def _agent_kwargs(self) -> dict:
         """Build AIAgent kwargs from the configured ``model`` block.
@@ -34,22 +40,18 @@ class AgentConsult:
         config.yaml ``model:`` (e.g. provider=azure-foundry, default=gpt-5.5)."""
         import os
 
-        kwargs: dict = {"quiet_mode": True}
-        try:
-            from hermes_cli.config import cfg_get, load_config
+        from .hermes_api import model_config_block
 
-            m = cfg_get(load_config(), "model") or {}
-            if isinstance(m, dict):
-                if m.get("default"):
-                    kwargs["model"] = m["default"]
-                if m.get("provider"):
-                    kwargs["provider"] = m["provider"]
-                if m.get("base_url"):
-                    kwargs["base_url"] = m["base_url"]
-                if m.get("api_mode"):
-                    kwargs["api_mode"] = m["api_mode"]
-        except Exception:  # noqa: BLE001
-            pass
+        kwargs: dict = {"quiet_mode": True}
+        m = model_config_block()
+        if m.get("default"):
+            kwargs["model"] = m["default"]
+        if m.get("provider"):
+            kwargs["provider"] = m["provider"]
+        if m.get("base_url"):
+            kwargs["base_url"] = m["base_url"]
+        if m.get("api_mode"):
+            kwargs["api_mode"] = m["api_mode"]
         if self._model:
             kwargs["model"] = self._model
         key = os.getenv("AZURE_FOUNDRY_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
@@ -59,16 +61,26 @@ class AgentConsult:
             kwargs["session_id"] = self._session_id
         return kwargs
 
-    def _run_sync(self, query: str) -> str:
-        if self._agent is None:
-            from run_agent import AIAgent  # heavy import — defer to first consult
+    BUSY_SENTINEL = "\x00BUSY\x00"
 
-            kwargs = self._agent_kwargs()
-            try:
-                self._agent = AIAgent(**kwargs)
-            except TypeError:  # older AIAgent without session_id — drop and retry
-                kwargs.pop("session_id", None)
-                self._agent = AIAgent(**kwargs)
+    def _run_sync(self, query: str) -> str:
+        # Non-blocking: a timed-out consult's zombie thread may still hold the
+        # lock — a new request must answer "busy", not silently queue behind it
+        # until its own timeout.
+        if not self._run_lock.acquire(blocking=False):
+            return self.BUSY_SENTINEL
+        try:
+            return self._run_locked(query)
+        finally:
+            self._run_lock.release()
+
+    def _run_locked(self, query: str) -> str:
+        if self._agent is None:
+            # Boundary resident: a tool-capable consult has no public path
+            # (ctx.llm is completion-only; delegate_task needs a parent agent).
+            from .hermes_api import build_consult_agent
+
+            self._agent = build_consult_agent(**self._agent_kwargs())
         return self._agent.chat(query)
 
     async def ask(self, query: str, *, timeout_s: float = 45.0) -> str:
@@ -80,9 +92,22 @@ class AgentConsult:
             result = await asyncio.wait_for(
                 asyncio.to_thread(self._run_sync, query), timeout=timeout_s
             )
+            if result == self.BUSY_SENTINEL:
+                return "I'm still finishing the previous request — give me a moment and ask again."
             return (result or "").strip() or "I didn't find anything to report."
         except asyncio.TimeoutError:
-            return "That's taking a while — I'll keep working and follow up."
+            # D4: never promise a follow-up that nothing will deliver. The
+            # consult thread is abandoned on timeout; say so honestly and point
+            # at the path that DOES deliver (the background task tool).
+            logger.warning("[teams_voice] consult timed out after %.0fs; result dropped", timeout_s)
+            # The timed-out thread is still running on this agent (threads
+            # cannot be killed). Drop our reference so the NEXT consult builds
+            # a fresh agent instead of sharing state with the zombie.
+            self._agent = None
+            return (
+                "Sorry — that took too long and I had to stop. Ask me to work on it "
+                "in the background and I'll send you the result when it's done."
+            )
         except Exception:  # noqa: BLE001 — never let a consult crash the call
             logger.error("[teams_voice] agent consult failed", exc_info=True)
             return "Sorry, I ran into an error working on that."

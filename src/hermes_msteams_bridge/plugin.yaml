@@ -1,5 +1,5 @@
 name: teams_voice
-version: 0.3.0
+version: 0.3.5
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
   HMAC-authenticated WebSocket that the hosted StandIn media bridge dials into,
@@ -15,6 +15,7 @@ kind: standalone
 # pairs with is a separate, hosted process reached over the WebSocket.
 provides_tools:
   - teams_voice_status
+  - call_user
 hooks:
   - on_session_end
 optional_env:
@@ -51,8 +52,10 @@ optional_env:
     description: "Azure realtime API version (e.g. 2025-04-01-preview)."
   - name: TEAMS_VOICE_REALTIME_VOICE
     description: "Realtime voice name (e.g. cedar)."
+  - name: TEAMS_VOICE_LANGUAGES
+    description: "Comma-separated languages the realtime assistant handles (e.g. en,fr,de,ar). Empty = auto-detect and mirror the caller."
   - name: TEAMS_VOICE_BILINGUAL
-    description: "Pin the realtime model to bilingual Arabic/English (true/false)."
+    description: "DEPRECATED alias for TEAMS_VOICE_LANGUAGES=ar,en."
   - name: TEAMS_VOICE_ALLOWLIST_ALLOW_NAMES
     description: "Also match the allowlist against caller display names (weaker; default false)."
   - name: TEAMS_VOICE_ALLOW_REMOTE_WORKER
@@ -60,4 +63,6 @@ optional_env:
   - name: TEAMS_VOICE_REQUIRE_RECORDING_STATUS
     description: "Gate media processing until Teams recording is active (default true)."
   - name: TEAMS_SHAREPOINT_SITE_ID
-    description: "SharePoint (OneDrive) site id (host,siteGuid,webGuid) to attach the meeting-minutes .docx to the chat; needs the bot app's Graph Sites.ReadWrite.All."
+    description: "Optional; reserved for a future large-file SharePoint delivery path. The minutes .docx file card itself needs no SharePoint - it uses the Bot Framework attachment contract with the bot credentials."
+  - name: TEAMS_VOICE_SHOW_FILE_ROOT
+    description: "Root directory show_file may display from (containment; default <hermes home>/workspace/teams_voice_show - a dedicated presentation dir). Everything outside it is refused."

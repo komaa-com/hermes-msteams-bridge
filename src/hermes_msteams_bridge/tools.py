@@ -1,14 +1,18 @@
 """Agent-facing tools for the teams_voice bridge.
 
-For the scaffold this is just a read-only status tool. The realtime call tools
+Two global agent tools: the read-only ``teams_voice_status`` probe and
+``call_user`` — chat-to-call (§3.6): a user asks in Teams chat, the agent
+places a voice call and speaks the message on answer. The realtime call tools
 (``look_at_screen``, ``show_to_caller``, ``post_meeting_minutes``) are surfaced
-to the *realtime model* per-call by the dialogue handler, not registered here as
-global agent tools — they only make sense inside an active call.
+to the *realtime model* per-call by the dialogue handler, not registered here —
+they only make sense inside an active call.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from typing import Any, Dict
 
 from .config import resolve_config
@@ -17,8 +21,10 @@ TEAMS_VOICE_STATUS_SCHEMA: Dict[str, Any] = {
     "name": "teams_voice_status",
     "description": (
         "Report the Microsoft Teams voice/video (CVI) bridge configuration and "
-        "readiness: bind host/port, whether a shared secret is configured, and "
-        "whether the aiohttp dependency is available. Does not reveal the secret."
+        "readiness: bind host/port, whether a shared secret is configured, "
+        "whether the aiohttp dependency is available, and a probe of every "
+        "Hermes surface the bridge depends on (vision, STT, TTS, delivery). "
+        "Does not reveal the secret."
     ),
     "parameters": {"type": "object", "properties": {}},
 }
@@ -33,8 +39,13 @@ def check_requirements() -> bool:
     return True
 
 
-def handle_teams_voice_status(**_kwargs: Any) -> str:
+def handle_teams_voice_status(args: dict | None = None, **_kwargs: Any) -> str:
+    """Status probe. Hermes dispatches ``handler(args, **kwargs)``, so the
+    positional args dict must be accepted even though this tool takes none."""
+    from .hermes_api import hermes_version_note, probe_boundaries
+
     cfg = resolve_config()
+    boundaries = probe_boundaries()  # logs each missing surface at WARNING
     return json.dumps(
         {
             "ok": True,
@@ -43,5 +54,149 @@ def handle_teams_voice_status(**_kwargs: Any) -> str:
             "port": cfg.port,
             "path": cfg.path,
             "deps_available": check_requirements(),
+            "hermes": hermes_version_note(),
+            "boundaries": boundaries,
+            # contract_available: every surface exists. operational_ready:
+            # additionally, no provider/config check_fn failed (None = n/a).
+            "boundaries_ok": all(b["ok"] for b in boundaries),
+            "operational_ok": all(b.get("operational") is not False for b in boundaries),
         }
+    )
+
+
+# ── call_user: chat-to-call ──────────────────────────────────────────────────
+
+CALL_USER_SCHEMA: Dict[str, Any] = {
+    "name": "call_user",
+    "description": (
+        "Place an outbound Microsoft Teams voice call to a user and speak a "
+        "message when they answer. Use when someone asks to be called with an "
+        "answer or update ('call me and explain X'). The call is placed by the "
+        "StandIn media bridge; the voice agent delivers the message and can "
+        "then continue the conversation."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "user_aad_id": {
+                "type": "string",
+                "description": "Azure AD object id of the user to call.",
+            },
+            "message": {
+                "type": "string",
+                "description": "What to say when they answer (spoken, so keep it natural).",
+            },
+        },
+        "required": ["user_aad_id", "message"],
+    },
+}
+
+
+logger = __import__("logging").getLogger(__name__)
+
+# Outbound dial rate limit (review round 5): a chat surface must not be able
+# to burst-dial. Sliding hour window, process-local.
+_CALL_TIMES: list = []
+_CALL_LIMIT_PER_HOUR = 6
+
+
+def _call_user_rate_ok() -> bool:
+    """Check only — the slot is recorded on successful placement, so failed
+    dials and worker errors never burn the hourly budget."""
+    import time as _time
+
+    now = _time.monotonic()
+    _CALL_TIMES[:] = [t for t in _CALL_TIMES if now - t < 3600]
+    return len(_CALL_TIMES) < _CALL_LIMIT_PER_HOUR
+
+
+def _call_user_rate_record() -> None:
+    import time as _time
+
+    _CALL_TIMES.append(_time.monotonic())
+
+
+def _run_coro_blocking(coro):
+    """Run a coroutine from a sync tool handler, inside or outside a loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    # A loop is running in this thread (gateway-side dispatch): hop threads.
+    box: dict = {}
+
+    def _target() -> None:
+        try:
+            box["result"] = asyncio.run(coro)
+        except BaseException as exc:  # noqa: BLE001 — re-raised below
+            box["error"] = exc
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join()
+    if "error" in box:
+        raise box["error"]
+    return box.get("result")
+
+
+def handle_call_user(args: dict | None = None, **kwargs: Any) -> str:
+    """Place the call and register the message for greet-on-answer delivery."""
+    params = {**(args or {}), **kwargs}
+    aad_id = str(params.get("user_aad_id") or "").strip()
+    message = str(params.get("message") or "").strip()
+    if not aad_id or not message:
+        return json.dumps({"error": "user_aad_id and message are required"})
+
+    cfg = resolve_config()
+    if not cfg.configured:
+        return json.dumps({"error": "teams_voice is not configured (no shared secret)"})
+    # STRICTER than inbound (review round 5): outbound dialing requires an
+    # EXPLICIT allowlist entry — allow_all covers who may call the bot, never
+    # who the bot may dial. Otherwise a chat user (or a prompt injection in
+    # any chat surface) turns the bot into a model-controlled dialer.
+    if not cfg.allowlist or (aad_id or "").strip().lower() not in cfg.allowlist:
+        return json.dumps(
+            {"error": "outbound calls require the callee on an explicit teams_voice allowlist"}
+        )
+    if not _call_user_rate_ok():
+        return json.dumps({"error": "outbound call rate limit reached; try again later"})
+    # Tenant comes from operator config only — never from the model.
+    tenant = cfg.tenant_id
+    if not tenant:
+        return json.dumps({"error": "no tenant configured (set TEAMS_VOICE_TENANT_ID)"})
+
+    from .call_session_base import _pending_set
+    from .outbound import OutboundError, place_call
+
+    try:
+        result = _run_coro_blocking(
+            place_call(
+                user_object_id=aad_id,
+                tenant_id=tenant,
+                shared_secret=cfg.shared_secret,
+                worker_base_url=cfg.worker_base_url,
+                allow_remote=cfg.allow_remote_worker,
+            )
+        )
+    except OutboundError as exc:
+        return json.dumps({"error": f"could not place the call: {exc}"})
+    call_id = (result or {}).get("callId")
+    if not call_id:
+        # place_call returns {"raw": ...} on malformed 200s — that is not success.
+        return json.dumps({"error": "the worker accepted the request but returned no callId"})
+    _call_user_rate_record()
+    # The outbound leg's session.start pops this and speaks it on answer. The
+    # originating Teams chat (gateway session context) is the §3.7 no-answer
+    # fallback target — without it an unanswered chat-to-call died silently.
+    from .hermes_api import current_chat_context
+
+    platform, chat_id = current_chat_context()
+    fallback_thread = chat_id if platform == "teams" else ""
+    _pending_set(call_id, message, thread_id=fallback_thread)
+    logger.info(
+        "[teams_voice] AUDIT call_user: callee=%s callId=%s fallback_thread=%s",
+        aad_id, call_id, "yes" if fallback_thread else "no",
+    )
+    return json.dumps(
+        {"success": True, "callId": call_id, "note": "calling now; message is spoken on answer"}
     )

@@ -44,7 +44,7 @@ here - this package is the *media/voice* half.
 | Realtime tool schemas + dispatch | `realtime_tools.py`, `call_tools.py` |
 | Agent bridge (consult / background task) | `agent_consult.py` |
 | Avatar emotion + viseme cues | `expression.py`, `viseme_estimate.py` |
-| Meeting transcript / minutes / `.docx` | `meeting.py`, `meeting_docx.py` |
+| Meeting transcript / minutes; delivery as a Teams **file card** (Word `.docx` via the Bot Framework attachment contract, same as the Hermes Teams adapter's `send_document`) with text fallback; local `.docx` artifact | `meeting.py`, `meeting_docx.py` |
 | Audio (resample, 20 ms framing, RMS) | `audio.py` |
 | ElevenLabs TTS (timestamp alignment) | `elevenlabs_tts.py` |
 | Outbound "call me back" place-call | `outbound.py` |
@@ -111,7 +111,6 @@ plugins:
         shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # secret stays in .env
         host: 127.0.0.1
         port: 8443
-        share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}   # optional
         realtime:
           backend: azure                # azure | openai
           azure_endpoint: https://<your-azure-resource>.cognitiveservices.azure.com
@@ -138,7 +137,6 @@ permissions, admin-consented, for full functionality:
 | `Calls.AccessMedia.All` | access the call's real-time audio/video media |
 | `Chat.Read.All` | resolve chat / thread ids and read message context |
 | `ChatMessage.Read.Chat` | read messages in chats the bot is installed in |
-| `Sites.ReadWrite.All` | upload files / minutes to SharePoint (OneDrive) |
 
 Outbound "call me back" additionally needs `Calls.InitiateGroupCall.All` (skip if
 unused). Pairing your own bot with StandIn is done in the StandIn dashboard - see

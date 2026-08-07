@@ -133,7 +133,7 @@ Contributor-level responsibilities (see also
 | `vision_store.py`, `vision_budget.py` | Latest-frame + keyframe history per source; per-call spend cap. |
 | `expression.py`, `viseme_estimate.py` | Avatar cues: emotion classification, viseme timelines. |
 | `realtime_tools.py`, `call_tools.py`, `agent_consult.py` | The model-facing tools and their dispatch into Hermes. |
-| `meeting.py`, `meeting_docx.py` | Minutes/recap and the SharePoint `.docx` upload. |
+| `meeting.py`, `meeting_docx.py` | Minutes/recap posted to the chat - attached as a Word `.docx` **file card** when the bot's Teams credentials are configured (the same Bot Framework attachment contract the Hermes Teams adapter uses), text otherwise; a local `.docx` artifact is always kept. `share_point_site_id` is reserved for a future large-file path (inline attachments cap at 4 MB). |
 | `outbound.py` | HMAC-signed place-call with the loopback SSRF guard. |
 | `cli.py`, `__init__.py`, `tools.py` | `hermes teams-voice serve|status`, plugin registration, the `teams_voice_status` tool. |
 
