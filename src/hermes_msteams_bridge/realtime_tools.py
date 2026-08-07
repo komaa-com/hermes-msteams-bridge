@@ -12,8 +12,9 @@ HERMES_AGENT_CONSULT = {
     "name": "hermes_agent_consult",
     "description": (
         "Delegate to the Hermes agent to answer a question or perform an action — "
-        "lookups, calculations, files, web, or running tools. Use this for anything "
-        "beyond small talk. Returns a short result to speak to the caller."
+        "lookups, calculations, files, web, running tools, or using any of the "
+        "installed Hermes skills. Use this for anything beyond small talk. "
+        "Returns a short result to speak to the caller."
     ),
     "parameters": {
         "type": "object",
@@ -77,6 +78,91 @@ SHOW_TO_CALLER = {
 }
 
 
+SHOW_FILE = {
+    "type": "function",
+    "name": "show_file",
+    "description": (
+        "Display a real file from your workspace on your video tile so the "
+        "caller can see it — an image, a PDF page, or an Office document page. "
+        "Use when the caller should look at actual content rather than hear it "
+        "described. Workspace-relative paths only."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "File path relative to the workspace (e.g. 'reports/q3.pdf').",
+            },
+            "page": {
+                "type": "integer",
+                "description": "Page number for PDF/Office documents (1-based). Default 1.",
+            },
+        },
+        "required": ["path"],
+    },
+}
+
+
+SHOW_WEB_PAGE = {
+    "type": "function",
+    "name": "show_web_page",
+    "description": (
+        "Open a web page in the browser, screenshot it, and display it on your "
+        "video tile — show the caller the actual page you are describing (docs, "
+        "dashboards, settings screens). http(s) URLs only."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "The http(s) URL to show."}
+        },
+        "required": ["url"],
+    },
+}
+
+
+WALKTHROUGH = {
+    "type": "function",
+    "name": "walkthrough",
+    "description": (
+        "Guide the caller through a sequence of steps visually: for each step, "
+        "display a workspace file (screenshot, PDF page) on your video tile and "
+        "speak the accompanying explanation, advancing when you finish talking. "
+        "Use for 'how do I…' walkthroughs where showing beats telling. Stops "
+        "immediately if the caller interrupts. Maximum 6 steps."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array",
+                "description": "Ordered walkthrough steps (1-6).",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Workspace-relative file to display for this step.",
+                        },
+                        "page": {
+                            "type": "integer",
+                            "description": "Page number for PDF/Office files (1-based).",
+                        },
+                        "say": {
+                            "type": "string",
+                            "description": "What to say while this step is on screen.",
+                        },
+                    },
+                    "required": ["path", "say"],
+                },
+            }
+        },
+        "required": ["steps"],
+    },
+}
+
+
 CALL_ME_BACK = {
     "type": "function",
     "name": "call_me_back",
@@ -103,8 +189,8 @@ HERMES_AGENT_TASK = {
     "type": "function",
     "name": "hermes_agent_task",
     "description": (
-        "Run a long-running job in the background (multi-step work or research that "
-        "takes more than a few seconds). Acknowledge to the caller that you're on it; "
+        "Run a long-running job in the background (multi-step work, research, or "
+        "skill-based work that takes more than a few seconds). Acknowledge to the caller that you're on it; "
         "the result is delivered by calling them back when it's done. Use this instead "
         "of hermes_agent_consult when the work won't finish within the conversation."
     ),
@@ -114,6 +200,27 @@ HERMES_AGENT_TASK = {
             "query": {"type": "string", "description": "The task to run in the background."}
         },
         "required": ["query"],
+    },
+}
+
+
+SET_CALL_LANGUAGE = {
+    "type": "function",
+    "name": "set_call_language",
+    "description": (
+        "Pin the call to a specific language for the rest of the conversation "
+        "(applies immediately). Use when the caller asks to continue in another "
+        "language, e.g. 'let's speak French from now on'."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "language": {
+                "type": "string",
+                "description": "ISO 639-1 code, e.g. 'fr', 'de', 'ar', 'en'.",
+            }
+        },
+        "required": ["language"],
     },
 }
 
@@ -136,6 +243,10 @@ def default_tools() -> list[dict]:
         HERMES_AGENT_TASK,
         LOOK_AT_SCREEN,
         SHOW_TO_CALLER,
+        SHOW_FILE,
+        SHOW_WEB_PAGE,
+        WALKTHROUGH,
+        SET_CALL_LANGUAGE,
         CALL_ME_BACK,
         POST_MEETING_MINUTES,
     ]

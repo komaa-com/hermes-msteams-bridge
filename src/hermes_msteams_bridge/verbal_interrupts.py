@@ -16,7 +16,9 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Whole-utterance interrupt phrases (normalized). English + Arabic.
+# Whole-utterance interrupt phrases (normalized), per language (§3.8):
+# English, Arabic, French, German. Deterministic and code-level — a French
+# caller's "arrête" cuts playback whether or not the model would have stopped.
 _INTERRUPT_PHRASES: frozenset[str] = frozenset(
     {
         # English
@@ -42,12 +44,47 @@ _INTERRUPT_PHRASES: frozenset[str] = frozenset(
         "اسكت",
         "بس",
         "كفاية",
+        # French
+        "arrête",
+        "arrêtez",
+        "arrête toi",
+        "attends",
+        "attendez",
+        "ça suffit",
+        "tais toi",
+        "taisez vous",
+        "laisse tomber",
+        "annule",
+        "annulez",
+        "stop stop stop",
+        # German
+        "stopp",
+        "halt",
+        "warte",
+        "warten sie",
+        "moment",
+        "moment mal",
+        "das reicht",
+        "es reicht",
+        "sei still",
+        "ruhe",
+        "abbrechen",
+        "vergiss es",
     }
 )
 
-# Leading/trailing filler stripped before matching.
+# Leading/trailing filler stripped before matching (per language).
 _FILLER: frozenset[str] = frozenset(
-    {"um", "uh", "er", "ok", "okay", "please", "hey", "yeah", "no", "من", "فضلك", "يا"}
+    {
+        # English
+        "um", "uh", "er", "ok", "okay", "please", "hey", "yeah", "no",
+        # Arabic
+        "من", "فضلك", "يا",
+        # French
+        "euh", "bah", "bon", "alors", "s", "il", "te", "vous", "plaît", "plait",
+        # German
+        "äh", "ähm", "also", "na", "mal", "bitte",
+    }
 )
 
 # Arabic diacritics (tashkeel) + tatweel to strip for robust matching.

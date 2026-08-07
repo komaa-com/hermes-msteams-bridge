@@ -58,8 +58,11 @@ class RealtimeConfig:
     # Caller-audio transcription (for wake words / verbal interrupts). Empty
     # string disables it (some deployments don't support the field).
     input_transcribe_model: str = "whisper-1"
-    # Bilingual Arabic/English mode (opt-in): pin the model to detect/mirror the
-    # caller's language and translate on request.
+    # Languages the assistant should handle (§3.8), e.g. ("en", "fr", "de").
+    # Empty = auto-detect and mirror the caller. ``bilingual`` is the
+    # deprecated alias for ("ar", "en").
+    languages: tuple[str, ...] = ()
+    # Bilingual Arabic/English mode (deprecated alias for languages=(ar, en)).
     bilingual: bool = False
 
     @property
@@ -77,22 +80,25 @@ def _to_ws(url: str) -> str:
 
 
 def _pick(block: "dict[str, Any]", key: str, env: str, default: str = "") -> str:
-    """Resolve one value: config.yaml block first, then env, then default."""
+    """Resolve one value: config.yaml block first, then env (``TEAMS_CALL_*``
+    preferred, ``TEAMS_CALL_*`` legacy), then default."""
     val = block.get(key)
     if val is not None and str(val).strip() != "":
         return str(val).strip()
-    return os.getenv(env, "").strip() or default
+    from ..config import plugin_env
+
+    return plugin_env(env, "").strip() or default
 
 
 def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeConfig:
     """Build a :class:`RealtimeConfig` from config.yaml + environment.
 
     Both sources are supported per the Hermes docs: the per-plugin config.yaml
-    block (``plugins.entries.teams_voice.config.realtime``) takes precedence,
+    block (``plugins.entries.teams_call.config.realtime``) takes precedence,
     with environment variables as the fallback. ``block`` is read from config.yaml
     when omitted (pass ``{}`` to force env-only, e.g. in tests).
 
-    Azure is selected when ``backend: azure`` / ``TEAMS_VOICE_REALTIME_BACKEND=azure``,
+    Azure is selected when ``backend: azure`` / ``TEAMS_CALL_REALTIME_BACKEND=azure``,
     an Azure endpoint is set, or an explicit ``*.azure.com`` URL is given;
     otherwise OpenAI (bearer auth). The Azure key falls back to
     ``AZURE_OPENAI_API_KEY`` / ``AZURE_FOUNDRY_API_KEY`` so the gateway key is reused.
@@ -105,33 +111,48 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
         except Exception:  # noqa: BLE001
             block = {}
 
-    backend = _pick(block, "backend", "TEAMS_VOICE_REALTIME_BACKEND").lower()
-    explicit_url = _pick(block, "url", "TEAMS_VOICE_REALTIME_URL")
-    azure_endpoint = _pick(block, "azure_endpoint", "TEAMS_VOICE_AZURE_ENDPOINT")
-    voice = _pick(block, "voice", "TEAMS_VOICE_REALTIME_VOICE", DEFAULT_VOICE)
-    instructions = _pick(block, "instructions", "TEAMS_VOICE_REALTIME_INSTRUCTIONS", DEFAULT_INSTRUCTIONS)
+    backend = _pick(block, "backend", "TEAMS_CALL_REALTIME_BACKEND").lower()
+    explicit_url = _pick(block, "url", "TEAMS_CALL_REALTIME_URL")
+    azure_endpoint = _pick(block, "azure_endpoint", "TEAMS_CALL_AZURE_ENDPOINT")
+    voice = _pick(block, "voice", "TEAMS_CALL_REALTIME_VOICE", DEFAULT_VOICE)
+    instructions = _pick(block, "instructions", "TEAMS_CALL_REALTIME_INSTRUCTIONS", DEFAULT_INSTRUCTIONS)
 
     def _vad() -> "tuple[float, int, int]":
         try:
-            thr = float(_pick(block, "vad_threshold", "TEAMS_VOICE_VAD_THRESHOLD", "0.5"))
-            prefix = int(_pick(block, "prefix_padding_ms", "TEAMS_VOICE_PREFIX_PADDING_MS", "300"))
-            silence = int(_pick(block, "silence_duration_ms", "TEAMS_VOICE_SILENCE_DURATION_MS", "500"))
+            thr = float(_pick(block, "vad_threshold", "TEAMS_CALL_VAD_THRESHOLD", "0.5"))
+            prefix = int(_pick(block, "prefix_padding_ms", "TEAMS_CALL_PREFIX_PADDING_MS", "300"))
+            silence = int(_pick(block, "silence_duration_ms", "TEAMS_CALL_SILENCE_DURATION_MS", "500"))
         except ValueError:
             return 0.5, 300, 500
         return thr, prefix, silence
 
     vad_threshold, prefix_padding_ms, silence_duration_ms = _vad()
     # "" / "none" / "off" disables caller transcription.
-    transcribe_model = _pick(block, "input_transcribe_model", "TEAMS_VOICE_INPUT_TRANSCRIBE_MODEL", "whisper-1")
+    transcribe_model = _pick(block, "input_transcribe_model", "TEAMS_CALL_INPUT_TRANSCRIBE_MODEL", "whisper-1")
     if transcribe_model.lower() in ("none", "off", "disabled"):
         transcribe_model = ""
-    bilingual = _pick(block, "bilingual", "TEAMS_VOICE_BILINGUAL", "").lower() in ("1", "true", "yes", "on")
+    bilingual = _pick(block, "bilingual", "TEAMS_CALL_BILINGUAL", "").lower() in ("1", "true", "yes", "on")
+    # languages: a YAML list in the realtime block, or a comma-separated env.
+    raw_langs = block.get("languages")
+    if isinstance(raw_langs, (list, tuple)):
+        languages = tuple(str(v).strip().lower() for v in raw_langs if str(v).strip())
+    elif isinstance(raw_langs, str) and raw_langs.strip():
+        # YAML `languages: "en,fr"` — honour it instead of silently ignoring.
+        languages = tuple(p.strip().lower() for p in raw_langs.split(",") if p.strip())
+    else:
+        languages = tuple(
+            p.strip().lower()
+            for p in __import__("hermes_msteams_bridge.config", fromlist=["config"]).plugin_env("TEAMS_CALL_LANGUAGES", "").split(",")
+            if p.strip()
+        )
+    if not languages and bilingual:  # deprecated alias
+        languages = ("ar", "en")
     is_azure = backend == "azure" or bool(azure_endpoint) or "azure.com" in explicit_url
 
     if is_azure:
-        deployment = _pick(block, "azure_deployment", "TEAMS_VOICE_AZURE_DEPLOYMENT")
+        deployment = _pick(block, "azure_deployment", "TEAMS_CALL_AZURE_DEPLOYMENT")
         api_version = _pick(
-            block, "azure_api_version", "TEAMS_VOICE_AZURE_API_VERSION", DEFAULT_AZURE_API_VERSION
+            block, "azure_api_version", "TEAMS_CALL_AZURE_API_VERSION", DEFAULT_AZURE_API_VERSION
         )
         if explicit_url:
             base_url = _to_ws(explicit_url)
@@ -139,7 +160,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
             base = _to_ws(azure_endpoint.rstrip("/"))
             base_url = f"{base}/openai/realtime?api-version={api_version}&deployment={deployment}"
         api_key = (
-            _pick(block, "api_key", "TEAMS_VOICE_REALTIME_API_KEY")
+            _pick(block, "api_key", "TEAMS_CALL_REALTIME_API_KEY")
             or os.getenv("AZURE_OPENAI_API_KEY", "").strip()
             or os.getenv("AZURE_FOUNDRY_API_KEY", "").strip()
         )
@@ -155,12 +176,13 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
             silence_duration_ms=silence_duration_ms,
             input_transcribe_model=transcribe_model,
             bilingual=bilingual,
+            languages=languages,
         )
 
     return RealtimeConfig(
-        api_key=_pick(block, "api_key", "TEAMS_VOICE_REALTIME_API_KEY")
+        api_key=_pick(block, "api_key", "TEAMS_CALL_REALTIME_API_KEY")
         or os.getenv("OPENAI_API_KEY", "").strip(),
-        model=_pick(block, "model", "TEAMS_VOICE_REALTIME_MODEL", DEFAULT_MODEL),
+        model=_pick(block, "model", "TEAMS_CALL_REALTIME_MODEL", DEFAULT_MODEL),
         voice=voice,
         instructions=instructions,
         base_url=explicit_url or DEFAULT_BASE_URL,
@@ -170,6 +192,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
         silence_duration_ms=silence_duration_ms,
         input_transcribe_model=transcribe_model,
         bilingual=bilingual,
+        languages=languages,
     )
 
 
@@ -187,6 +210,11 @@ class RealtimeSession:
         self._session: Any = None
         self._recv_task: Optional[asyncio.Task] = None
         self._closed = False
+        # In-flight tool tasks (see _dispatch): held so they are not garbage
+        # collected mid-run, and cancelled on close so a long tool cannot
+        # outlive the call.
+        self._tool_tasks: set[asyncio.Task] = set()
+        self._tool_serial = asyncio.Lock()  # one tool at a time, in arrival order
         self._close_fired = False  # guards on_close to a single delivery
         self._response_active = False  # True between response.created and response.done
         self._auto_response = True  # turn_detection.create_response (off in group mode)
@@ -254,12 +282,36 @@ class RealtimeSession:
             session["tool_choice"] = "auto"
         await self._send({"type": "session.update", "session": session})
         self._recv_task = asyncio.create_task(self._recv_loop())
-        logger.info("[teams_voice] realtime connected model=%s", self._cfg.model)
+        logger.info("[teams_call] realtime connected model=%s", self._cfg.model)
+
+    def _spawn_tool_task(self, coro) -> None:
+        """Run a tool callback off the receive loop, tracked for teardown.
+
+        Serialized through ``_tool_serial`` so parallel function calls from
+        one response can't interleave their results (a fast tool would
+        otherwise trigger response.create before a slow sibling returned) —
+        the receive loop itself stays unblocked either way."""
+        async def _runner() -> None:
+            async with self._tool_serial:
+                await coro
+
+        task = asyncio.create_task(_runner())
+        self._tool_tasks.add(task)
+        task.add_done_callback(self._tool_tasks.discard)
 
     async def close(self) -> None:
         self._closed = True
         if self._recv_task:
             self._recv_task.cancel()
+        tools = list(self._tool_tasks)
+        for task in tools:  # no tool outlives the call
+            task.cancel()
+        if tools:
+            # Cancelled AND awaited: a walkthrough/browser/consult must be
+            # fully unwound before the sockets go away, or it can still fire a
+            # late display.image / request_say against a closing session.
+            await asyncio.gather(*tools, return_exceptions=True)
+        self._tool_tasks.clear()
         try:
             if self._ws is not None and not self._ws.closed:
                 await self._ws.close()
@@ -275,6 +327,18 @@ class RealtimeSession:
             return
         await self._send(
             {"type": "input_audio_buffer.append", "audio": base64.b64encode(pcm24k).decode("ascii")}
+        )
+
+    async def update_instructions(self, instructions: str) -> None:
+        """Replace the session instructions mid-call (D5) via ``session.update``.
+
+        Lets a language or policy change apply to the running call instead of
+        waiting for the next one. Best-effort; no-op when closed or empty.
+        """
+        if self._closed or not (instructions or "").strip():
+            return
+        await self._send(
+            {"type": "session.update", "session": {"instructions": instructions}}
         )
 
     async def set_auto_response(self, enabled: bool) -> None:
@@ -341,21 +405,23 @@ class RealtimeSession:
         / greeting, where there is no caller turn to respond to)."""
         await self.send_user_text(instruction, respond=True)
 
-    async def send_image(self, image_url: str) -> None:
+    async def send_image(self, image_url: str, caption: str = "") -> None:
         """Push an ambient image into the conversation with NO forced response.
 
-        Keeps the realtime model continuously visually aware. Best-effort.
+        Keeps the realtime model continuously visually aware. ``caption``
+        attributes the frame (e.g. "Sara's shared screen") so the model knows
+        *whose* surface it is looking at, not just the pixels. Best-effort.
         """
         if self._closed or not image_url:
             return
+        content: list[dict] = []
+        if caption:
+            content.append({"type": "input_text", "text": caption})
+        content.append({"type": "input_image", "image_url": image_url})
         await self._send(
             {
                 "type": "conversation.item.create",
-                "item": {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_image", "image_url": image_url}],
-                },
+                "item": {"type": "message", "role": "user", "content": content},
             }
         )
 
@@ -409,7 +475,7 @@ class RealtimeSession:
             raise
         except Exception:  # noqa: BLE001 — a transport error must not crash silently
             reason = "provider-error"
-            logger.error("[teams_voice] realtime recv loop error", exc_info=True)
+            logger.error("[teams_call] realtime recv loop error", exc_info=True)
         # The socket dropped on the provider's side (server close, transport error,
         # or the stream just ended) while we did NOT initiate it: notify the handler
         # so it can close the Teams call rather than leave the caller in dead air.
@@ -450,11 +516,20 @@ class RealtimeSession:
             resp = evt.get("response") or {}
             for item in resp.get("output") or []:
                 if isinstance(item, dict) and item.get("type") == "function_call":
-                    await self._safe(
-                        self.on_function_call,
-                        item.get("name", ""),
-                        item.get("call_id", ""),
-                        item.get("arguments", "") or "{}",
+                    # Tools can run for many seconds (walkthrough, browser,
+                    # agent consult). Awaiting them HERE would block this
+                    # receive loop, so no audio deltas, barge-in
+                    # (speech_started), response.done or provider errors could
+                    # be processed while a tool ran — the tool's own
+                    # request_say would never be heard. Schedule instead, and
+                    # keep a reference so the task is not GC'd mid-flight.
+                    self._spawn_tool_task(
+                        self._safe(
+                            self.on_function_call,
+                            item.get("name", ""),
+                            item.get("call_id", ""),
+                            item.get("arguments", "") or "{}",
+                        )
                     )
             await self._safe(self.on_response_done)
         elif etype == "error":
@@ -465,7 +540,7 @@ class RealtimeSession:
             # on it, permanently muting the bot in group/manual mode. Clear it here so
             # the next turn can speak.
             self._response_active = False
-            logger.warning("[teams_voice] realtime error: %s", evt.get("error"))
+            logger.warning("[teams_call] realtime error: %s", evt.get("error"))
             await self._safe(self.on_error, evt.get("error"))
 
     async def _safe(self, cb: Optional[AsyncCb], *args: Any) -> None:
@@ -474,4 +549,4 @@ class RealtimeSession:
         try:
             await cb(*args)
         except Exception:  # noqa: BLE001 — a callback fault must not kill the loop
-            logger.error("[teams_voice] realtime callback error", exc_info=True)
+            logger.error("[teams_call] realtime callback error", exc_info=True)

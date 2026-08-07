@@ -37,12 +37,16 @@ Documentation = "https://komaa-com.github.io/hermes-msteams-bridge/"
 [project.optional-dependencies]
 # Faster audio resampling (pure-Python fallback is used when absent).
 numpy = ["numpy>=1.21"]
+# show_file document rendering: pypdfium2 (PDFium; Apache/BSD) — the same
+# renderer the Hermes pdf skill recommends as its PyMuPDF replacement.
+# Office formats additionally need LibreOffice (`soffice`) on PATH.
+documents = ["pypdfium2>=4.30", "pillow>=10"]
 
-# Hermes discovers the plugin through this entry-point group. The key (teams_voice)
+# Hermes discovers the plugin through this entry-point group. The key (teams_call)
 # is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
-teams_voice = "hermes_msteams_bridge"
+teams_call = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]
 where = ["src"]

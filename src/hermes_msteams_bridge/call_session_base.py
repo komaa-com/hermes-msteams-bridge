@@ -20,33 +20,95 @@ from .meeting import MeetingTranscript
 
 logger = logging.getLogger(__name__)
 
-# The inbound call that requests a callback and the outbound leg that delivers it
-# are *different* WebSocket connections, so the pending spoken result is keyed by
-# the worker's callId here. Entries carry a TTL so a never-answered call-back can't
-# leak its result string indefinitely.
+# The inbound leg that requests a call-back, the ``call_user`` tool in the
+# GATEWAY process, and the outbound leg that answers in the SERVE process are
+# different connections in different processes — so the pending spoken result
+# is keyed by callId in a small file store under the Hermes home (both
+# processes share the filesystem per the documented topology). Entries carry a
+# TTL so a never-answered call-back can't leak its text indefinitely. The
+# in-process dict remains as the fallback when no Hermes home exists (tests,
+# bare installs) — there the two ends are the same process anyway.
 _PENDING_OUTBOUND: dict[str, tuple[str, float]] = {}
 _PENDING_TTL_S = 600.0
+
+
+def _pending_dir():
+    try:
+        from .hermes_api import hermes_home
+
+        d = hermes_home() / "cache" / "teams_call" / "pending_outbound"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    except Exception:  # noqa: BLE001 — no Hermes home: fall back in-process
+        return None
+
+
+def _safe_call_key(call_id: str) -> str:
+    import hashlib
+
+    # callId is worker-provided: never let it shape a filesystem path.
+    return hashlib.sha256(call_id.encode("utf-8")).hexdigest()[:32]
 
 
 def _pending_prune() -> None:
     now = time.monotonic()
     for k in [k for k, (_t, exp) in _PENDING_OUTBOUND.items() if exp <= now]:
         _PENDING_OUTBOUND.pop(k, None)
+    d = _pending_dir()
+    if d is not None:
+        wall_now = time.time()
+        for f in d.glob("*.json"):
+            try:
+                if wall_now - f.stat().st_mtime > _PENDING_TTL_S:
+                    f.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
-def _pending_set(call_id: str, text: str) -> None:
+def _pending_set(call_id: str, text: str, thread_id: str = "") -> None:
+    """Register the message the outbound leg speaks on answer. ``thread_id``
+    (when known) is the §3.7 fallback target: a call that never produces a
+    session within the stale window gets its text posted to that chat instead
+    of expiring silently."""
+    import json as _json
+
     _pending_prune()
+    d = _pending_dir()
+    if d is not None:
+        try:
+            tmp = d / f".{_safe_call_key(call_id)}.tmp"
+            tmp.write_text(_json.dumps({"text": text, "thread_id": thread_id}), encoding="utf-8")
+            tmp.rename(d / f"{_safe_call_key(call_id)}.json")  # atomic publish
+            return
+        except OSError:
+            logger.warning("[teams_call] pending store write failed; using in-process", exc_info=True)
     _PENDING_OUTBOUND[call_id] = (text, time.monotonic() + _PENDING_TTL_S)
 
 
 def _pending_pop(call_id: str) -> str | None:
+    import json as _json
+
     _pending_prune()
+    d = _pending_dir()
+    if d is not None:
+        f = d / f"{_safe_call_key(call_id)}.json"
+        try:
+            text = _json.loads(f.read_text(encoding="utf-8")).get("text")
+            f.unlink(missing_ok=True)
+            if text is not None:
+                return str(text)
+        except OSError:
+            pass  # not in the file store — check in-process below
+        except ValueError:
+            f.unlink(missing_ok=True)
     entry = _PENDING_OUTBOUND.pop(call_id, None)
     return entry[0] if entry else None
 
 
 class BaseTeamsCallHandler(CallSessionHandler):
     """Common session policy shared by the realtime + streaming handlers."""
+
+    _gateway_adapter = None  # set by the phase-2b adapter factory
 
     def __init__(self, bridge_config: TeamsVoiceConfig | None = None) -> None:
         self._bridge = bridge_config
@@ -98,7 +160,7 @@ class BaseTeamsCallHandler(CallSessionHandler):
         elif self._bridge and not caller_allowed(
             self._bridge, msg.caller.aad_id, msg.caller.display_name
         ):
-            logger.info("[teams_voice] caller not allowlisted; rejecting %s", session.call_id)
+            logger.info("[teams_call] caller not allowlisted; rejecting %s", session.call_id)
             await session._ws.close()
             return False
         scope = self._bridge.session_scope if self._bridge else "per-call"
@@ -109,6 +171,12 @@ class BaseTeamsCallHandler(CallSessionHandler):
         else:
             key = msg.call_id
         self._consult = AgentConsult(session_id=f"teams:{key}")
+        # Gateway-resident mode (phase 2b): register this live call so
+        # adapter.send()/cron delivery can speak into it by thread id.
+        if getattr(self, "_gateway_adapter", None) is not None:
+            from .gateway_adapter import register_live_call
+
+            register_live_call(self._thread_id or msg.call_id, self)
         return True
 
     def _group_decision(self, transcript: str, now_ms: float):
@@ -127,3 +195,74 @@ class BaseTeamsCallHandler(CallSessionHandler):
             await self._session.send_expression(emotion)
         except Exception:  # noqa: BLE001 — cosmetic
             pass
+
+
+# §3.7 plugin-side mitigation: a placed call whose callId never produced a WS
+# session within ``max_age_s`` is treated as a probable no-answer. The scan
+# CLAIMS such entries (deletes them) and returns any with a chat fallback
+# target, so the caller can post the result instead of losing it. The wire-
+# level call-outcome signal stays ON HOLD; this bounds the blind spot.
+_STALE_AFTER_S = 180.0
+
+
+def scan_stale_pending(max_age_s: float = _STALE_AFTER_S) -> list[tuple[str, str, str]]:
+    """Two-phase claim of no-answer entries older than ``max_age_s``:
+    rename to ``.fallback`` and return ``[(text, thread_id, claim_path)]`` —
+    the record dies only after the chat post succeeds (see
+    :func:`deliver_stale_pending`), so a failed send keeps its retry."""
+    import json as _json
+
+    claimed: list[tuple[str, str, str]] = []
+    d = _pending_dir()
+    if d is None:
+        return claimed
+    now = time.time()
+    for f in d.glob("*.fallback"):  # recover claims from a crashed reaper
+        try:
+            if now - f.stat().st_mtime > max_age_s:
+                f.rename(f.with_suffix(".json"))
+        except OSError:
+            pass
+    for f in sorted(d.glob("*.json")):
+        try:
+            age = now - f.stat().st_mtime
+            if age < max_age_s:
+                continue
+            entry = _json.loads(f.read_text(encoding="utf-8"))
+            thread_id = str(entry.get("thread_id") or "")
+            if not thread_id:
+                f.unlink(missing_ok=True)  # nothing to deliver to — expire
+                continue
+            claim = f.with_suffix(".fallback")
+            f.rename(claim)
+            claimed.append((str(entry.get("text") or ""), thread_id, str(claim)))
+        except (OSError, ValueError):
+            continue
+    return claimed
+
+
+async def deliver_stale_pending() -> int:
+    """Post claimed no-answer results to their chat threads; returns count."""
+    from .hermes_api import send_teams_message
+
+    from pathlib import Path as _Path
+
+    delivered = 0
+    for text, thread_id, claim_path in scan_stale_pending():
+        result = await send_teams_message(
+            thread_id,
+            f"\U0001F4DE I tried to call you but couldn't reach you. Here's what I had: {text}",
+        )
+        claim = _Path(claim_path)
+        try:
+            if result.get("success"):
+                claim.unlink(missing_ok=True)
+                delivered += 1
+                logger.info("[teams_call] no-answer fallback delivered to %s", thread_id)
+            else:
+                if claim.exists():
+                    claim.rename(claim.with_suffix(".json"))  # keep for retry
+                logger.warning("[teams_call] no-answer fallback failed (kept for retry): %s", result.get("error"))
+        except OSError:
+            pass
+    return delivered

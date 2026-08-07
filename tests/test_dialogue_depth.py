@@ -100,6 +100,10 @@ def test_default_tools_present_and_well_formed():
         "hermes_agent_task",
         "look_at_screen",
         "show_to_caller",
+        "show_file",
+        "show_web_page",
+        "walkthrough",
+        "set_call_language",
         "call_me_back",
         "post_meeting_minutes",
     }

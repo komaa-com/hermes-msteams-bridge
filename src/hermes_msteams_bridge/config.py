@@ -1,4 +1,4 @@
-"""Configuration resolution for the teams_voice bridge.
+"""Configuration resolution for the teams_call bridge.
 
 Values come from (in priority order): the plugin's ``config.extra`` block in
 ``config.yaml`` (when wired through the gateway), then environment variables,
@@ -20,6 +20,11 @@ from typing import Any, Mapping
 PCM_SAMPLE_RATE_HZ = 16_000
 FRAME_DURATION_MS = 20
 BYTES_PER_FRAME = PCM_SAMPLE_RATE_HZ * FRAME_DURATION_MS // 1000 * 2  # 640
+
+def plugin_env(name: str, default: str = "") -> str:
+    """Read a ``TEAMS_CALL_*`` plugin env var (single indirection point)."""
+    return os.getenv(name, default)
+
 
 # Default WebSocket path the worker connects to: ``/voice/msteams/stream/{callId}``.
 DEFAULT_PATH = "/voice/msteams/stream"
@@ -84,8 +89,19 @@ class TeamsVoiceConfig:
     wake_phrases: tuple[str, ...] = ("assistant", "hermes")
     # Post end-of-call meeting minutes to the Teams chat (opt-in).
     meeting_recap: bool = False
-    # SharePoint (OneDrive) site id (host,siteGuid,webGuid) for attaching files /
-    # minutes to the chat; empty = text-only delivery.
+    # Root directory show_file may display from (containment). Empty =
+    # <hermes home>/workspace/teams_call_show (a dedicated presentation dir,
+    # not the whole workspace). Everything outside it is refused (§3.1).
+    show_file_root: str = ""
+    # Phase 4(b) "watch it work" browser view: while a background task runs,
+    # periodically screenshot the agent's browser session and show it on the
+    # tile instead of the plain progress panel. OPT-IN because each capture
+    # dispatches browser_vision, which can invoke the auxiliary vision model
+    # (cost); throttled to one capture per 10 s, bounded per task.
+    watch_browser_tasks: bool = False
+    # Optional; reserved for a future large-file SharePoint delivery path.
+    # The minutes .docx file card itself needs no SharePoint: it rides the Bot
+    # Framework attachment contract using the bot credentials.
     share_point_site_id: str = ""
 
     @property
@@ -109,94 +125,82 @@ def _coerce_float(value: Any, default: float) -> float:
 
 
 def plugin_config_block() -> dict[str, Any]:
-    """Return the ``plugins.entries.teams_voice.config`` block from config.yaml.
+    """Return the ``plugins.entries.teams_call.config`` block from config.yaml.
 
     Empty dict when unset or config can't be loaded. ``${VAR}`` references are
     already expanded by Hermes's config loader, so secrets can live in ``.env``
-    and be referenced here (e.g. ``shared_secret: ${TEAMS_VOICE_SHARED_SECRET}``).
+    and be referenced here (e.g. ``shared_secret: ${TEAMS_CALL_SHARED_SECRET}``).
+    Delegates to the :mod:`.hermes_api` boundary (the config loader is one of
+    its documented residents).
     """
-    try:
-        from hermes_cli.config import load_config
+    from .hermes_api import plugin_config_block as _block
 
-        config = load_config()
-        node = (
-            config.get("plugins", {})
-            .get("entries", {})
-            .get("teams_voice", {})
-            .get("config", {})
-        )
-        return node if isinstance(node, dict) else {}
-    except Exception:  # noqa: BLE001 — config is optional; fall back to env
-        return {}
+    return _block()
 
 
 def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     """Build a :class:`TeamsVoiceConfig` from config.yaml + environment.
 
     ``extra`` is the per-plugin config block; when omitted it is read from
-    ``plugins.entries.teams_voice.config`` in config.yaml. Environment variables
+    ``plugins.entries.teams_call.config`` in config.yaml. Environment variables
     are the fallback so the bridge still works with no config file.
     """
     extra = extra if extra is not None else plugin_config_block()
 
     shared_secret = (
         str(extra.get("shared_secret") or "").strip()
-        or os.getenv("TEAMS_VOICE_SHARED_SECRET", "").strip()
+        or plugin_env("TEAMS_CALL_SHARED_SECRET", "").strip()
     )
     host = (
         str(extra.get("host") or "").strip()
-        or os.getenv("TEAMS_VOICE_HOST", "").strip()
+        or plugin_env("TEAMS_CALL_HOST", "").strip()
         or "127.0.0.1"
     )
     port = _coerce_int(
-        extra.get("port") or os.getenv("TEAMS_VOICE_PORT", ""), 8443
+        extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
     )
     path = str(extra.get("path") or "").strip() or DEFAULT_PATH
     window = _coerce_int(
-        extra.get("hmac_window_ms") or os.getenv("TEAMS_VOICE_HMAC_WINDOW_MS", ""),
+        extra.get("hmac_window_ms") or plugin_env("TEAMS_CALL_HMAC_WINDOW_MS", ""),
         60_000,
     )
     worker_base_url = (
         str(extra.get("worker_base_url") or "").strip()
-        or os.getenv("TEAMS_VOICE_WORKER_BASE_URL", "").strip()
+        or plugin_env("TEAMS_CALL_WORKER_BASE_URL", "").strip()
         or "http://127.0.0.1:9440"
     )
     tenant_id = (
         str(extra.get("tenant_id") or "").strip()
-        or os.getenv("TEAMS_VOICE_TENANT_ID", "").strip()
+        or plugin_env("TEAMS_CALL_TENANT_ID", "").strip()
         or os.getenv("TEAMS_TENANT_ID", "").strip()
     )
-    # Allowlist: TEAMS_VOICE_ALLOWLIST; when empty, inherit the chat plane's
+    # Allowlist: TEAMS_CALL_ALLOWLIST; when empty, inherit the chat plane's
     # TEAMS_ALLOWED_USERS so voice + chat share one AAD allowlist.
-    allowlist = _coerce_list(extra.get("allowlist"), os.getenv("TEAMS_VOICE_ALLOWLIST", "")) or _coerce_list(
+    allowlist = _coerce_list(extra.get("allowlist"), plugin_env("TEAMS_CALL_ALLOWLIST", "")) or _coerce_list(
         None, os.getenv("TEAMS_ALLOWED_USERS", "")
     )
     rr = extra.get("require_recording_status")
     if rr is None:
-        rr = os.getenv("TEAMS_VOICE_REQUIRE_RECORDING_STATUS", "true")
+        rr = plugin_env("TEAMS_CALL_REQUIRE_RECORDING_STATUS", "true")
     require_recording = str(rr).strip().lower() not in ("0", "false", "no", "off")  # default True
     max_vision = _coerce_int(
-        extra.get("max_vision_per_minute") or os.getenv("TEAMS_VOICE_MAX_VISION_PER_MINUTE", ""), 30
+        extra.get("max_vision_per_minute") or plugin_env("TEAMS_CALL_MAX_VISION_PER_MINUTE", ""), 30
     )
     max_call_duration_s = _coerce_float(
-        extra.get("max_call_duration_s") or os.getenv("TEAMS_VOICE_MAX_CALL_DURATION_S", ""), 0.0
+        extra.get("max_call_duration_s") or plugin_env("TEAMS_CALL_MAX_CALL_DURATION_S", ""), 0.0
     )
     heartbeat_s = _coerce_float(
-        extra.get("heartbeat_s") or os.getenv("TEAMS_VOICE_HEARTBEAT_S", ""), 20.0
+        extra.get("heartbeat_s") or plugin_env("TEAMS_CALL_HEARTBEAT_S", ""), 20.0
     )
     session_scope = (
         str(extra.get("session_scope") or "").strip()
-        or os.getenv("TEAMS_VOICE_SESSION_SCOPE", "").strip()
+        or plugin_env("TEAMS_CALL_SESSION_SCOPE", "").strip()
         or "per-call"
     )
-    wake = _coerce_list(extra.get("wake_phrases"), os.getenv("TEAMS_VOICE_WAKE_PHRASES", ""))
+    wake = _coerce_list(extra.get("wake_phrases"), plugin_env("TEAMS_CALL_WAKE_PHRASES", ""))
     meeting_recap = str(
-        extra.get("meeting_recap", "") or os.getenv("TEAMS_VOICE_MEETING_RECAP", "")
+        extra.get("meeting_recap", "") or plugin_env("TEAMS_CALL_MEETING_RECAP", "")
     ).strip().lower() in ("1", "true", "yes", "on")
-    _sp = str(extra.get("share_point_site_id") or extra.get("sharePointSiteId") or "").strip()
-    if _sp.startswith("${"):  # an unexpanded ${VAR} reference — ignore, use env
-        _sp = ""
-    share_point_site_id = _sp or os.getenv("TEAMS_SHAREPOINT_SITE_ID", "").strip()
 
     return TeamsVoiceConfig(
         shared_secret=shared_secret,
@@ -214,11 +218,23 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         session_scope=session_scope,
         wake_phrases=wake or ("assistant", "hermes"),
         meeting_recap=meeting_recap,
-        share_point_site_id=share_point_site_id,
-        allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_VOICE_ALLOWLIST_ALLOW_NAMES"),
-        allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_VOICE_ALLOW_REMOTE_WORKER"),
-        allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_VOICE_ALLOW_ALL"),
+        show_file_root=(
+            str(extra.get("show_file_root") or "").strip()
+            or plugin_env("TEAMS_CALL_SHOW_FILE_ROOT", "").strip()
+        ),
+        share_point_site_id=_resolve_sharepoint(extra),
+        watch_browser_tasks=_coerce_bool(extra.get("watch_browser_tasks"), "TEAMS_CALL_WATCH_BROWSER_TASKS"),
+        allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_CALL_ALLOWLIST_ALLOW_NAMES"),
+        allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_CALL_ALLOW_REMOTE_WORKER"),
+        allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_CALL_ALLOW_ALL"),
     )
+
+
+def _resolve_sharepoint(extra: Mapping[str, Any]) -> str:
+    _sp = str(extra.get("share_point_site_id") or extra.get("sharePointSiteId") or "").strip()
+    if _sp.startswith("${"):  # an unexpanded ${VAR} reference — ignore, use env
+        _sp = ""
+    return _sp or os.getenv("TEAMS_SHAREPOINT_SITE_ID", "").strip()
 
 
 def caller_allowed(config: "TeamsVoiceConfig", aad_id: str | None, display_name: str | None) -> bool:
@@ -235,7 +251,7 @@ def caller_allowed(config: "TeamsVoiceConfig", aad_id: str | None, display_name:
 
 
 def _coerce_bool(value: Any, env: str) -> bool:
-    return str(value if value not in (None, "") else os.getenv(env, "")).strip().lower() in (
+    return str(value if value not in (None, "") else plugin_env(env, "")).strip().lower() in (
         "1", "true", "yes", "on",
     )
 
