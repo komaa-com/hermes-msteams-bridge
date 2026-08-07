@@ -57,7 +57,27 @@ jobs:
       - name: Install Hermes host + plugin
         run: |
           python -m pip install --upgrade pip
-          pip install "${{ matrix.hermes-ref }}"
+          case "${{ matrix.hermes-ref }}" in
+            git+*)
+              # Upstream BLOCKS pip wheel/sdist builds from git (its build
+              # backend raises "Building wheels or sdists for hermes-agent is
+              # not supported" - Nix/uv2nix-only packaging). Install it the
+              # way it actually ships: a source checkout with its pinned deps,
+              # the checkout itself on PYTHONPATH (agent/, gateway/, tools/,
+              # hermes_cli/ are top-level packages in the repo root).
+              ref="${{ matrix.hermes-ref }}"; ref="${ref#git+}"
+              url="${ref%@*}"; commit="${ref##*@}"
+              [ "$commit" = "$ref" ] && commit=""   # no @pin -> default branch
+              git clone --filter=blob:none "$url" "$RUNNER_TEMP/hermes-agent"
+              [ -z "$commit" ] || git -C "$RUNNER_TEMP/hermes-agent" checkout "$commit"
+              python -c "import tomllib; d = tomllib.load(open('$RUNNER_TEMP/hermes-agent/pyproject.toml', 'rb')); print('\n'.join(d['project']['dependencies']))" > "$RUNNER_TEMP/hermes-reqs.txt"
+              pip install -r "$RUNNER_TEMP/hermes-reqs.txt"
+              echo "PYTHONPATH=$RUNNER_TEMP/hermes-agent" >> "$GITHUB_ENV"
+              ;;
+            *)
+              pip install "${{ matrix.hermes-ref }}"
+              ;;
+          esac
           pip install -e ".[numpy,documents]" pytest
 
       - name: Boundary probe + PluginContext contract
