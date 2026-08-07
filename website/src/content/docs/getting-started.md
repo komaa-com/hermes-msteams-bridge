@@ -53,22 +53,22 @@ uv pip install --python /path/to/hermes/venv/bin/python "hermes-msteams-bridge[n
 
 ## 2. Enable the plugin
 
-Entry-point plugins are **opt-in**. Add `teams_voice` to `plugins.enabled` in
+Entry-point plugins are **opt-in**. Add `teams_call` to `plugins.enabled` in
 `~/.hermes/config.yaml`:
 
 ```yaml
 plugins:
   enabled:
-    - teams_voice
+    - teams_call
 ```
 
 :::caution[Pip plugins are enabled in config.yaml only]
 **`hermes plugins enable` does NOT work for pip-installed plugins** - it only sees
-bundled/user-dir plugins. You must add `teams_voice` to `plugins.enabled` in
+bundled/user-dir plugins. You must add `teams_call` to `plugins.enabled` in
 `config.yaml` as above.
 :::
 
-Confirm Hermes now sees it (`teams_voice` should appear in the list):
+Confirm Hermes now sees it (`teams_call` should appear in the list):
 
 ```bash
 hermes plugins list
@@ -77,7 +77,7 @@ hermes plugins list
 Then check the resolved config + readiness:
 
 ```bash
-hermes teams-voice status
+hermes teams-call status
 ```
 
 ## 3. Configure the shared secret + provider
@@ -90,11 +90,11 @@ referenced with `${VAR}`.
 ```yaml
 plugins:
   enabled:
-    - teams_voice
+    - teams_call
   entries:
-    teams_voice:
+    teams_call:
       config:
-        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # must match StandIn
+        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # must match StandIn
         host: 127.0.0.1
         port: 8443
         realtime:
@@ -107,7 +107,7 @@ plugins:
 `~/.hermes/.env`:
 
 ```bash
-TEAMS_VOICE_SHARED_SECRET=<the value from StandIn>
+TEAMS_CALL_SHARED_SECRET=<the value from StandIn>
 OPENAI_API_KEY=<your-openai-key>
 ```
 
@@ -121,7 +121,7 @@ required:
 1. Go to [standin.komaa.com/sandbox](https://standin.komaa.com/sandbox).
 2. Generate a Teams meeting link; a shared StandIn bot joins that meeting.
 3. Copy the **shared secret** the sandbox gives you into
-   `TEAMS_VOICE_SHARED_SECRET`.
+   `TEAMS_CALL_SHARED_SECRET`.
 
 The sandbox is time-limited (about 5 minutes/day per session) - perfect for a first
 run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) for all three tiers.
@@ -129,13 +129,13 @@ run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) 
 ## 5. Run the plugin
 
 ```bash
-hermes teams-voice serve --handler realtime
+hermes teams-call serve --handler realtime
 ```
 
 You should see it bind:
 
 ```text
-[teams_voice] bridge listening host=127.0.0.1 port=8443 path=/voice/msteams/stream/{call_id}
+[teams_call] bridge listening host=127.0.0.1 port=8443 path=/voice/msteams/stream/{call_id}
 ```
 
 Other handlers: `--handler streaming` (STT→agent→TTS, needs `ffmpeg`),

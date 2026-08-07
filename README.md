@@ -12,7 +12,7 @@ Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Ag
 packaged as a standalone, pip-installable plugin: install it *on top of* a normal
 Hermes install, no fork required.
 
-The plugin (name **`teams_voice`**) hosts the HMAC-authenticated WebSocket bridge that
+The plugin (name **`teams_call`**) hosts the HMAC-authenticated WebSocket bridge that
 the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
@@ -85,7 +85,7 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-msteams-brid
 
 ## Enable + run
 
-Entry-point plugins are **opt-in**: add `teams_voice` to `plugins.enabled` in
+Entry-point plugins are **opt-in**: add `teams_call` to `plugins.enabled` in
 **`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
 does **not** work for pip-installed plugins (it only sees bundled/user-dir plugins),
 so enable it in config:
@@ -93,13 +93,13 @@ so enable it in config:
 ```yaml
 plugins:
   enabled:
-    - teams_voice
+    - teams_call
 ```
 
 Then run the voice bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 
 ```bash
-hermes teams-voice serve --handler realtime
+hermes teams-call serve --handler realtime
 ```
 
 And, separately, the Teams chat plane + cron:
@@ -113,16 +113,16 @@ hermes gateway run
 Config lives in Hermes's own files (this package ships none). Non-secret settings go
 in **`config.yaml`**; secrets go in **`.env`** and are referenced with `${VAR}`.
 
-**`~/.hermes/config.yaml`**, under `plugins.entries.teams_voice.config`:
+**`~/.hermes/config.yaml`**, under `plugins.entries.teams_call.config`:
 
 ```yaml
 plugins:
   enabled:
-    - teams_voice                          # entry-point plugins are opt-in
+    - teams_call                          # entry-point plugins are opt-in
   entries:
-    teams_voice:
+    teams_call:
       config:
-        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # MUST match the secret paired in StandIn
+        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # MUST match the secret paired in StandIn
         host: 127.0.0.1
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
@@ -133,7 +133,7 @@ plugins:
         allowlist_allow_names: false       # also match the allowlist against display names (weaker; default off)
         session_scope: per-call            # per-call | per-thread | per-aad
         wake_phrases: [assistant, hermes]  # group-call wake phrases (speak only when addressed)
-        show_file_root: ""                 # show_file containment root (default <hermes home>/workspace/teams_voice_show)
+        show_file_root: ""                 # show_file containment root (default <hermes home>/workspace/teams_call_show)
         # Outbound "call me back" (StandIn places the return call over its loopback endpoint):
         worker_base_url: http://127.0.0.1:9440   # loopback endpoint StandIn exposes for place-call
         allow_remote_worker: false         # refuse a non-loopback place-call target unless set
@@ -154,14 +154,14 @@ plugins:
 > **Public OpenAI** instead of Azure: set `backend: openai`, `model: gpt-realtime`,
 > `api_key: ${OPENAI_API_KEY}`, and drop the `azure_*` keys.
 > **Streaming** (STT→agent→TTS) instead of realtime: omit the `realtime:` block and run
-> `hermes teams-voice serve --handler streaming` (needs `ffmpeg` on PATH).
+> `hermes teams-call serve --handler streaming` (needs `ffmpeg` on PATH).
 
 **`~/.hermes/.env`**, the secrets referenced above (plus Teams chat-plane creds if you
 also run `hermes gateway run`):
 
 ```bash
 # Voice bridge
-TEAMS_VOICE_SHARED_SECRET=<same value you set in StandIn>
+TEAMS_CALL_SHARED_SECRET=<same value you set in StandIn>
 AZURE_FOUNDRY_API_KEY=<azure-openai-key>                 # or OPENAI_API_KEY for public OpenAI
 
 # Teams chat plane (platforms/teams) - only if you run the gateway:
@@ -200,12 +200,12 @@ package exposes:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_voice = "hermes_msteams_bridge"
+teams_call = "hermes_msteams_bridge"
 ```
 
 Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the
-`teams-voice` CLI, the status tool, and the session hook. Entry-point plugins are
-opt-in, so `teams_voice` must be in `plugins.enabled` (add it in `config.yaml`;
+`teams-call` CLI, the status tool, and the session hook. Entry-point plugins are
+opt-in, so `teams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 `hermes plugins enable` does not see pip-installed plugins).
 
 ## Requirements
@@ -216,9 +216,9 @@ opt-in, so `teams_voice` must be in `plugins.enabled` (add it in `config.yaml`;
 
 ## Relationship to the bundled plugin
 
-This is the same code as the in-tree `plugins/teams_voice` plugin, repackaged for pip
+This is the same code as the original in-tree plugin, repackaged for pip
 distribution so you don't have to fork Hermes. Install it on **vanilla** Hermes; don't
-also keep a bundled `teams_voice` (same name → the entry-point would shadow it).
+also keep a bundled `teams_call` (same name → the entry-point would shadow it).
 
 - **Voice/CVI** works fully on vanilla Hermes.
 - **Meeting minutes** post to the chat with the Word `.docx` attached as a

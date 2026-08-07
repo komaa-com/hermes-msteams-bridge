@@ -58,19 +58,19 @@ def test_non_interrupt_sentences_pass_through(utterance):
 
 
 def test_languages_from_env_csv(monkeypatch):
-    monkeypatch.setenv("TEAMS_VOICE_LANGUAGES", "en, FR ,de")
+    monkeypatch.setenv("TEAMS_CALL_LANGUAGES", "en, FR ,de")
     cfg = realtime_config_from_env({})
     assert cfg.languages == ("en", "fr", "de")
 
 
 def test_languages_from_block_list(monkeypatch):
-    monkeypatch.delenv("TEAMS_VOICE_LANGUAGES", raising=False)
+    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"languages": ["En", "ar"]})
     assert cfg.languages == ("en", "ar")
 
 
 def test_bilingual_alias_maps_to_ar_en(monkeypatch):
-    monkeypatch.delenv("TEAMS_VOICE_LANGUAGES", raising=False)
+    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"bilingual": "true"})
     assert cfg.languages == ("ar", "en")
 
@@ -750,7 +750,7 @@ def test_timed_tts_empty_provider_does_not_divert(monkeypatch):
     import hermes_msteams_bridge.hermes_api as hermes_api
     from hermes_msteams_bridge import timed_tts
 
-    monkeypatch.delenv("TEAMS_VOICE_ELEVENLABS_VOICE_ID", raising=False)
+    monkeypatch.delenv("TEAMS_CALL_ELEVENLABS_VOICE_ID", raising=False)
     monkeypatch.setattr(hermes_api, "active_tts_provider", lambda: "")
     # Leftover key alone must NOT enable the timed path.
     assert timed_tts._elevenlabs_available() is False
@@ -786,7 +786,7 @@ def test_close_awaits_inflight_tool_tasks():
 
 
 def test_languages_yaml_string_honoured(monkeypatch):
-    monkeypatch.delenv("TEAMS_VOICE_LANGUAGES", raising=False)
+    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"languages": "en, FR"})
     assert cfg.languages == ("en", "fr")
 
@@ -810,3 +810,268 @@ def test_rate_limit_only_counts_successes(monkeypatch):
         out = _json.loads(tools_mod.handle_call_user({"user_aad_id": "aad-1", "message": "x"}))
         assert "could not place the call" in out["error"]
     assert tools_mod._CALL_TIMES == []  # failures never burned the budget
+
+
+# ── phase 4(b): browser task view (opt-in) ───────────────────────────────────
+
+
+def test_progress_loop_shows_browser_frames_when_opted_in(monkeypatch, tmp_path):
+    pytest.importorskip("PIL")
+    from hermes_msteams_bridge.call_tools import CallToolRunner
+
+    shot = tmp_path / "s.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 8)
+
+    frames = []
+
+    class _Session:
+        closed = False
+
+        async def send_display_image(self, b64, mime, *, duration_ms=None, mode=None, caption=None):
+            frames.append(caption)
+
+    class _Consult:
+        browser_task_id = "teams_call:consult:test"
+
+    class _Handler:
+        _session = _Session()
+        _turn_id = 0
+        _bridge = type("B", (), {"watch_browser_tasks": True})()
+        _consult = _Consult()
+
+    runner = CallToolRunner(_Handler())
+
+    import hermes_msteams_bridge.call_tools as ct
+    import hermes_msteams_bridge.hermes_api as hermes_api
+
+    async def fake_dispatch(name, args, **kw):
+        assert name == "browser_vision"
+        assert args["task_id"] == "teams_call:consult:test"  # round 8: pinned session
+        import json as _json
+
+        return _json.dumps({"answer": "ok", "screenshot_path": str(shot)})
+
+    monkeypatch.setattr(hermes_api, "dispatch_tool_async", fake_dispatch)
+
+    async def scenario():
+        real_sleep = asyncio.sleep
+
+        async def fast(s):
+            await real_sleep(0.01)
+
+        monkeypatch.setattr(ct.asyncio, "sleep", fast)
+        job = asyncio.get_event_loop().create_task(real_sleep(0.08))
+        await runner._progress_loop(job, "browse the docs")
+
+    asyncio.run(scenario())
+    assert "working… (live view)" in frames  # real browser frame shown
+    # unchanged screenshot on later ticks -> falls back to the panel
+    assert "working…" in frames
+
+
+def test_progress_loop_panel_only_without_opt_in(monkeypatch, tmp_path):
+    pytest.importorskip("PIL")
+    from hermes_msteams_bridge.call_tools import CallToolRunner
+
+    frames = []
+
+    class _Session:
+        closed = False
+
+        async def send_display_image(self, b64, mime, *, duration_ms=None, mode=None, caption=None):
+            frames.append(caption)
+
+    class _Handler:
+        _session = _Session()
+        _turn_id = 0
+        _bridge = type("B", (), {"watch_browser_tasks": False})()
+
+    runner = CallToolRunner(_Handler())
+    import hermes_msteams_bridge.call_tools as ct
+    import hermes_msteams_bridge.hermes_api as hermes_api
+
+    async def must_not_dispatch(name, args, **kw):
+        raise AssertionError("browser_vision dispatched without opt-in")
+
+    monkeypatch.setattr(hermes_api, "dispatch_tool_async", must_not_dispatch)
+
+    async def scenario():
+        real_sleep = asyncio.sleep
+
+        async def fast(s):
+            await real_sleep(0.01)
+
+        monkeypatch.setattr(ct.asyncio, "sleep", fast)
+        job = asyncio.get_event_loop().create_task(real_sleep(0.05))
+        await runner._progress_loop(job, "do a thing")
+
+    asyncio.run(scenario())
+    assert frames and all(c == "working…" for c in frames)
+
+
+# ── phase 2b: gateway-resident adapter ───────────────────────────────────────
+
+
+def test_deliver_by_voice_prefers_live_call(monkeypatch):
+    from hermes_msteams_bridge import gateway_adapter as ga
+
+    spoken = []
+
+    class _Live:
+        async def speak_text(self, text):
+            spoken.append(text)
+
+    ga.register_live_call("19:t@thread.v2", _Live())
+    try:
+        out = asyncio.run(ga.deliver_by_voice("aad-1", "your build is green", "19:t@thread.v2"))
+        assert out["success"] is True and out["mode"] == "live-call"
+        assert spoken == ["your build is green"]
+    finally:
+        ga._LIVE_CALLS.clear()
+
+
+def test_deliver_by_voice_places_callback_when_no_live_call(monkeypatch, tmp_path):
+    from hermes_msteams_bridge import gateway_adapter as ga
+    from hermes_msteams_bridge import call_session_base as csb
+    import hermes_msteams_bridge.gateway_adapter as ga_mod
+
+    monkeypatch.setattr(csb, "_pending_dir", lambda: tmp_path)
+    import hermes_msteams_bridge.config as config_mod
+
+    monkeypatch.setattr(config_mod, "resolve_config", lambda extra=None: _cfg())
+
+    async def fake_place_call(**kw):
+        assert kw["user_object_id"] == "aad-1"
+        return {"callId": "cb-1"}
+
+    import hermes_msteams_bridge.outbound as outbound
+
+    monkeypatch.setattr(outbound, "place_call", fake_place_call)
+    out = asyncio.run(ga.deliver_by_voice("aad-1", "cron says hi", "19:home@thread.v2"))
+    assert out["success"] is True and out["mode"] == "call-back"
+    assert csb._pending_pop("cb-1") == "cron says hi"
+
+
+def test_deliver_by_voice_enforces_allowlist(monkeypatch):
+    from hermes_msteams_bridge import gateway_adapter as ga
+    import hermes_msteams_bridge.config as config_mod
+
+    monkeypatch.setattr(config_mod, "resolve_config", lambda extra=None: _cfg(allowlist=()))
+    out = asyncio.run(ga.deliver_by_voice("aad-x", "hi"))
+    assert "allowlist" in out["error"]
+
+
+def test_standalone_voice_send_signature_parity():
+    from hermes_msteams_bridge import gateway_adapter as ga
+    import hermes_msteams_bridge.config as config_mod
+    import pytest as _p
+
+    # media_files/force_document accepted; unconfigured -> clean error dict
+    out = asyncio.run(ga.standalone_voice_send(
+        object(), "aad-1", "msg", thread_id=None, media_files=["x"], force_document=True
+    ))
+    assert "error" in out or "success" in out
+
+
+def test_streaming_gateway_turn_roundtrip(monkeypatch):
+    """Utterance -> MessageEvent -> (fake) gateway -> adapter.send -> spoken."""
+    import sys
+    import types
+
+    import hermes_msteams_bridge.handlers as handlers_mod
+    from hermes_msteams_bridge.config import TeamsVoiceConfig
+
+    # Fake the sanctioned base surface for a bare interpreter.
+    base = types.ModuleType("gateway.platforms.base")
+
+    class MessageType:
+        TEXT = "text"
+
+    class MessageEvent:
+        def __init__(self, text, message_type, source):
+            self.text, self.message_type, self.source = text, message_type, source
+
+    base.MessageEvent = MessageEvent
+    base.MessageType = MessageType
+    gw = sys.modules.get("gateway") or types.ModuleType("gateway")
+    plat = types.ModuleType("gateway.platforms")
+    monkeypatch.setitem(sys.modules, "gateway", gw)
+    monkeypatch.setitem(sys.modules, "gateway.platforms", plat)
+    monkeypatch.setitem(sys.modules, "gateway.platforms.base", base)
+
+    handler = handlers_mod.StreamingCallSessionHandler(
+        bridge_config=TeamsVoiceConfig(shared_secret="s")
+    )
+    handler._thread_id = "19:t@thread.v2"
+
+    received = []
+
+    class _Adapter:
+        def build_source(self, **kw):
+            received.append(("source", kw["chat_id"], kw.get("user_name")))
+            return {"chat": kw["chat_id"]}
+
+        async def handle_message(self, event):
+            received.append(("event", event.text))
+
+    handler._gateway_adapter = _Adapter()
+    ok = asyncio.run(handler._emit_gateway_turn(handler._gateway_adapter, "what's our revenue?"))
+    assert ok is True
+    assert ("event", "what's our revenue?") in received
+    assert received[0][1] == "19:t@thread.v2"
+
+
+# ── rename: teams_call only (no legacy teams_voice support) ──────────────────
+
+
+def test_env_reads_teams_call_only(monkeypatch):
+    from hermes_msteams_bridge.config import plugin_env
+
+    monkeypatch.setenv("TEAMS_CALL_PORT", "1111")  # legacy name: ignored
+    monkeypatch.delenv("TEAMS_CALL_PORT", raising=False)
+    assert plugin_env("TEAMS_CALL_PORT") == ""
+    monkeypatch.setenv("TEAMS_CALL_PORT", "2222")
+    assert plugin_env("TEAMS_CALL_PORT") == "2222"
+
+
+def test_config_entry_teams_call_only(monkeypatch):
+    import hermes_msteams_bridge.hermes_api as hermes_api
+
+    monkeypatch.setattr(hermes_api, "load_hermes_config", lambda: {
+        "plugins": {"entries": {
+            "teams_voice": {"config": {"port": 8443, "meeting_recap": True}},  # legacy: ignored
+            "teams_call": {"config": {"port": 9443}},
+        }}
+    })
+    block = hermes_api.plugin_config_block()
+    assert block == {"port": 9443}
+
+
+def test_register_wires_teams_call_surfaces_only():
+    import hermes_msteams_bridge as pkg
+
+    calls = []
+
+    class _Ctx:
+        def register_tool(self, **kw):
+            calls.append(("tool", kw["name"]))
+
+        def register_cli_command(self, **kw):
+            calls.append(("cli", kw["name"]))
+
+        def register_hook(self, name, cb):
+            calls.append(("hook", name))
+
+        def register_platform(self, **kw):
+            calls.append(("platform", kw["name"]))
+
+    try:
+        pkg.register(_Ctx())
+        cli_names = [n for kind, n in calls if kind == "cli"]
+        assert cli_names == ["teams-call"]  # no legacy alias
+        assert ("platform", "teams_call") in calls
+        assert ("tool", "teams_call_status") in calls
+    finally:
+        import hermes_msteams_bridge.hermes_api as hermes_api
+
+        hermes_api.set_plugin_context(None)

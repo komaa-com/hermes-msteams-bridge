@@ -36,7 +36,7 @@ def _pending_dir():
     try:
         from .hermes_api import hermes_home
 
-        d = hermes_home() / "cache" / "teams_voice" / "pending_outbound"
+        d = hermes_home() / "cache" / "teams_call" / "pending_outbound"
         d.mkdir(parents=True, exist_ok=True)
         return d
     except Exception:  # noqa: BLE001 — no Hermes home: fall back in-process
@@ -81,7 +81,7 @@ def _pending_set(call_id: str, text: str, thread_id: str = "") -> None:
             tmp.rename(d / f"{_safe_call_key(call_id)}.json")  # atomic publish
             return
         except OSError:
-            logger.warning("[teams_voice] pending store write failed; using in-process", exc_info=True)
+            logger.warning("[teams_call] pending store write failed; using in-process", exc_info=True)
     _PENDING_OUTBOUND[call_id] = (text, time.monotonic() + _PENDING_TTL_S)
 
 
@@ -107,6 +107,8 @@ def _pending_pop(call_id: str) -> str | None:
 
 class BaseTeamsCallHandler(CallSessionHandler):
     """Common session policy shared by the realtime + streaming handlers."""
+
+    _gateway_adapter = None  # set by the phase-2b adapter factory
 
     def __init__(self, bridge_config: TeamsVoiceConfig | None = None) -> None:
         self._bridge = bridge_config
@@ -158,7 +160,7 @@ class BaseTeamsCallHandler(CallSessionHandler):
         elif self._bridge and not caller_allowed(
             self._bridge, msg.caller.aad_id, msg.caller.display_name
         ):
-            logger.info("[teams_voice] caller not allowlisted; rejecting %s", session.call_id)
+            logger.info("[teams_call] caller not allowlisted; rejecting %s", session.call_id)
             await session._ws.close()
             return False
         scope = self._bridge.session_scope if self._bridge else "per-call"
@@ -169,6 +171,12 @@ class BaseTeamsCallHandler(CallSessionHandler):
         else:
             key = msg.call_id
         self._consult = AgentConsult(session_id=f"teams:{key}")
+        # Gateway-resident mode (phase 2b): register this live call so
+        # adapter.send()/cron delivery can speak into it by thread id.
+        if getattr(self, "_gateway_adapter", None) is not None:
+            from .gateway_adapter import register_live_call
+
+            register_live_call(self._thread_id or msg.call_id, self)
         return True
 
     def _group_decision(self, transcript: str, now_ms: float):
@@ -250,11 +258,11 @@ async def deliver_stale_pending() -> int:
             if result.get("success"):
                 claim.unlink(missing_ok=True)
                 delivered += 1
-                logger.info("[teams_voice] no-answer fallback delivered to %s", thread_id)
+                logger.info("[teams_call] no-answer fallback delivered to %s", thread_id)
             else:
                 if claim.exists():
                     claim.rename(claim.with_suffix(".json"))  # keep for retry
-                logger.warning("[teams_voice] no-answer fallback failed (kept for retry): %s", result.get("error"))
+                logger.warning("[teams_call] no-answer fallback failed (kept for retry): %s", result.get("error"))
         except OSError:
             pass
     return delivered

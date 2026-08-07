@@ -72,6 +72,11 @@ def test_only_hermes_api_imports_hermes():
         if py.name == "hermes_api.py":
             continue
         hits = _imported_roots(py) & HERMES_ROOTS
+        if py.name in ("gateway_adapter.py", "handlers.py"):
+            # The platform-adapter surface (gateway.platforms.base /
+            # gateway.config) is the ONE sanctioned exception: the developer
+            # guide instructs platform plugins to subclass it. Nothing else.
+            hits -= {"gateway"}
         if hits:
             offenders[str(py.relative_to(PKG_DIR))] = hits
     assert not offenders, f"Hermes imports outside hermes_api.py: {offenders}"
@@ -107,9 +112,9 @@ def test_probe_reports_missing_surfaces_without_raising():
 
 @bare_only
 def test_status_tool_reports_not_ok_without_host():
-    from hermes_msteams_bridge.tools import handle_teams_voice_status
+    from hermes_msteams_bridge.tools import handle_teams_call_status
 
-    payload = json.loads(handle_teams_voice_status())
+    payload = json.loads(handle_teams_call_status())
     assert payload["boundaries_ok"] is False
     assert "operational_ok" in payload
 
@@ -280,7 +285,7 @@ def test_elevenlabs_resolve_config_via_boundary(monkeypatch):
     from hermes_msteams_bridge import elevenlabs_tts
 
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
-    monkeypatch.delenv("TEAMS_VOICE_ELEVENLABS_VOICE_ID", raising=False)
+    monkeypatch.delenv("TEAMS_CALL_ELEVENLABS_VOICE_ID", raising=False)
     monkeypatch.setattr(
         hermes_api,
         "load_hermes_config",

@@ -215,7 +215,7 @@ def test_show_web_page_happy_path(root, tmp_path, monkeypatch):
 
     async def fake_shot(url, task_id=""):
         assert url == "https://example.com/docs"
-        assert task_id.startswith("teams_voice:")
+        assert task_id.startswith("teams_call:")
         return str(shot), "rendered"
 
     monkeypatch.setattr(hermes_api, "browser_page_screenshot", fake_shot)

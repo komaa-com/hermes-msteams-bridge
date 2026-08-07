@@ -6,7 +6,7 @@ Each surface is either **public** (a `PluginContext` service captured in
 the developer guides sanction) or a **documented resident**: a Hermes-internal
 import kept deliberately because no public equivalent exists. Residents are
 feature-probed at startup (:func:`probe_boundaries`) so a missing symbol
-surfaces in ``hermes teams-voice status`` and the serve log, never mid-call.
+surfaces in ``hermes teams-call status`` and the serve log, never mid-call.
 
 Residents (each with the reason no public surface covers it):
 
@@ -35,7 +35,7 @@ The probe distinguishes ``ok`` (the contract surface exists) from
 ``operational`` (the selected provider/config passes its own ``check_fn``):
 ``boundaries_ok`` can be true while e.g. TTS lacks an API key — status
 reports both. The probe imports heavyweight Hermes modules, so it runs on
-demand (``serve`` startup, ``teams-voice status``), never per-call.
+demand (``serve`` startup, ``teams-call status``), never per-call.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def llm() -> Any:
     try:
         return _ctx.llm
     except Exception:  # noqa: BLE001 — older host without the facade
-        logger.debug("[teams_voice] ctx.llm unavailable", exc_info=True)
+        logger.debug("[teams_call] ctx.llm unavailable", exc_info=True)
         return None
 
 
@@ -131,7 +131,7 @@ async def vision_ask(
     blocks: list[dict],
     *,
     max_tokens: int = 400,
-    purpose: str = "teams_voice.vision",
+    purpose: str = "teams_call.vision",
 ) -> str:
     """Answer a question about image/text blocks via the host-owned LLM.
 
@@ -141,7 +141,7 @@ async def vision_ask(
     """
     facade = llm()
     if facade is None:
-        logger.warning("[teams_voice] vision unavailable: no ctx.llm facade")
+        logger.warning("[teams_call] vision unavailable: no ctx.llm facade")
         return ""
     try:
         result = await facade.acomplete_structured(
@@ -152,7 +152,7 @@ async def vision_ask(
         )
         return (result.text or "").strip()
     except Exception:  # noqa: BLE001 — vision must never crash the call
-        logger.error("[teams_voice] vision consult failed", exc_info=True)
+        logger.error("[teams_call] vision consult failed", exc_info=True)
         return ""
 
 
@@ -250,7 +250,7 @@ async def fetch_image_bytes(url_or_path: str) -> tuple[bytes, str] | None:
 
     ok, _why = await asyncio.to_thread(url_is_public, ref)
     if not ok:
-        logger.warning("[teams_voice] image fetch refused non-public URL")
+        logger.warning("[teams_call] image fetch refused non-public URL")
         return None
 
     import aiohttp
@@ -263,18 +263,18 @@ async def fetch_image_bytes(url_or_path: str) -> tuple[bytes, str] | None:
                     return None
                 mime = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
                 if mime not in _ALLOWED_IMAGE_MIME:
-                    logger.warning("[teams_voice] image fetch: unexpected type %r", mime)
+                    logger.warning("[teams_call] image fetch: unexpected type %r", mime)
                     return None
                 declared = resp.content_length
                 if declared is not None and declared > MAX_FETCH_BYTES:
                     return None
                 data = await resp.content.read(MAX_FETCH_BYTES + 1)
                 if len(data) > MAX_FETCH_BYTES:
-                    logger.warning("[teams_voice] image fetch exceeded the size cap")
+                    logger.warning("[teams_call] image fetch exceeded the size cap")
                     return None
                 return data, mime
     except Exception:  # noqa: BLE001 — display is best-effort
-        logger.warning("[teams_voice] image fetch failed", exc_info=True)
+        logger.warning("[teams_call] image fetch failed", exc_info=True)
         return None
 
 
@@ -321,7 +321,7 @@ async def browser_page_screenshot(url: str, task_id: str = "") -> tuple[str, str
         args["task_id"] = task_id
     nav = _parse_tool_json(await dispatch_tool_async("browser_navigate", args))
     if nav.get("error"):
-        logger.warning("[teams_voice] browser_navigate failed: %s", nav.get("error"))
+        logger.warning("[teams_call] browser_navigate failed: %s", nav.get("error"))
         return None
     vargs: dict = {"question": "Has the page rendered completely?"}
     if task_id:
@@ -331,7 +331,7 @@ async def browser_page_screenshot(url: str, task_id: str = "") -> tuple[str, str
     # level; the native-vision multimodal envelope carries it under meta.
     path = vision.get("screenshot_path") or (vision.get("meta") or {}).get("screenshot_path") or ""
     if not path:
-        logger.warning("[teams_voice] browser_vision returned no screenshot_path")
+        logger.warning("[teams_call] browser_vision returned no screenshot_path")
         return None
     note = vision.get("answer") or vision.get("text_summary") or ""
     return str(path), str(note)
@@ -469,7 +469,7 @@ async def send_teams_file(
                 payload = await resp.json()
         return {"success": True, "message_id": payload.get("id")}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[teams_voice] file card delivery failed", exc_info=True)
+        logger.warning("[teams_call] file card delivery failed", exc_info=True)
         return {"error": str(exc)}
 
 
@@ -503,7 +503,7 @@ def transcribe(file_path: str) -> dict:
     try:
         from tools.transcription_tools import transcribe_audio
     except ImportError as exc:
-        logger.warning("[teams_voice] STT unavailable: %s", exc)
+        logger.warning("[teams_call] STT unavailable: %s", exc)
         return {"success": False, "transcript": "", "error": str(exc)}
     return transcribe_audio(file_path)
 
@@ -520,12 +520,12 @@ def load_hermes_config() -> dict:
 
 
 def plugin_config_block() -> dict:
-    """The ``plugins.entries.teams_voice.config`` block (``{}`` when unset)."""
+    """The ``plugins.entries.teams_call.config`` block (``{}`` when unset)."""
     node = (
         load_hermes_config()
         .get("plugins", {})
         .get("entries", {})
-        .get("teams_voice", {})
+        .get("teams_call", {})
         .get("config", {})
     )
     return node if isinstance(node, dict) else {}
@@ -737,9 +737,9 @@ def probe_boundaries() -> list[dict]:
             except Exception:  # noqa: BLE001
                 operational = False
         if not ok:
-            logger.warning("[teams_voice] boundary MISSING: %s (%s)", surface, detail or "unavailable")
+            logger.warning("[teams_call] boundary MISSING: %s (%s)", surface, detail or "unavailable")
         elif operational is False:
-            logger.warning("[teams_voice] boundary present but NOT READY: %s (check_fn failed)", surface)
+            logger.warning("[teams_call] boundary present but NOT READY: %s (check_fn failed)", surface)
         results.append(
             {"surface": surface, "kind": kind, "ok": ok, "operational": operational, "detail": detail}
         )

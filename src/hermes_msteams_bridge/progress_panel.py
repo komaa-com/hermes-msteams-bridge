@@ -47,5 +47,5 @@ def render_panel(task_text: str, elapsed_s: float) -> bytes | None:
         img.save(buf, format="PNG")
         return buf.getvalue()
     except Exception:  # noqa: BLE001 — cosmetic; never break the task
-        logger.debug("[teams_voice] progress panel render failed", exc_info=True)
+        logger.debug("[teams_call] progress panel render failed", exc_info=True)
         return None

@@ -30,7 +30,7 @@ def _jobs_dir():
     try:
         from .hermes_api import hermes_home
 
-        d = hermes_home() / "cache" / "teams_voice" / "jobs"
+        d = hermes_home() / "cache" / "teams_call" / "jobs"
         d.mkdir(parents=True, exist_ok=True)
         return d
     except Exception:  # noqa: BLE001 — no Hermes home: durability unavailable
@@ -55,7 +55,7 @@ def job_create(query: str, thread_id: str, session_key: str = "") -> str | None:
         tmp.rename(d / f"{job_id}.json")  # atomic publish
         return job_id
     except OSError:
-        logger.warning("[teams_voice] job persist failed; running non-durable", exc_info=True)
+        logger.warning("[teams_call] job persist failed; running non-durable", exc_info=True)
         return None
 
 
@@ -113,7 +113,7 @@ def claim_pending_jobs() -> list[dict]:
     claimed: list[dict] = []
     for f in sorted(d.glob("*.json")):
         if len(claimed) >= _RESUME_MAX:
-            logger.info("[teams_voice] resume cap reached; remaining jobs stay queued for the next cycle")
+            logger.info("[teams_call] resume cap reached; remaining jobs stay queued for the next cycle")
             break
         try:
             entry = json.loads(f.read_text(encoding="utf-8"))
@@ -125,11 +125,11 @@ def claim_pending_jobs() -> list[dict]:
             continue
         age = now - float(entry.get("created") or 0)
         if age > _JOB_TTL_S:
-            logger.info("[teams_voice] dropping stale background job (%.0f min old)", age / 60)
+            logger.info("[teams_call] dropping stale background job (%.0f min old)", age / 60)
             f.unlink(missing_ok=True)
             continue
         if not entry.get("thread_id"):
-            logger.info("[teams_voice] dropping resumed job with no delivery target")
+            logger.info("[teams_call] dropping resumed job with no delivery target")
             f.unlink(missing_ok=True)
             continue
         claim = f.with_suffix(".claimed")
@@ -172,12 +172,12 @@ async def resume_pending_jobs() -> int:
         query = str(job.get("query") or "")
         thread_id = str(job.get("thread_id") or "")
         session_key = str(job.get("session_key") or "")
-        logger.info("[teams_voice] resuming interrupted background job: %.60s", query)
+        logger.info("[teams_call] resuming interrupted background job: %.60s", query)
         consult = AgentConsult(session_id=session_key or None)
         try:
             result = await consult.ask(query, timeout_s=300.0)
         except Exception:  # noqa: BLE001
-            logger.error("[teams_voice] resumed job failed", exc_info=True)
+            logger.error("[teams_call] resumed job failed", exc_info=True)
             result = "I couldn't complete that task after a restart."
         outcome = await send_teams_message(
             thread_id,
@@ -189,7 +189,7 @@ async def resume_pending_jobs() -> int:
             delivered += 1
         else:
             logger.warning(
-                "[teams_voice] resumed job delivery failed (kept for retry): %s",
+                "[teams_call] resumed job delivery failed (kept for retry): %s",
                 outcome.get("error"),
             )
     return delivered

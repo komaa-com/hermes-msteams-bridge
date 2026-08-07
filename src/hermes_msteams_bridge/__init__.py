@@ -1,4 +1,4 @@
-"""teams_voice plugin — Microsoft Teams real-time voice/video (CVI) bridge driver.
+"""teams_call plugin — Microsoft Teams real-time voice/video (CVI) bridge driver.
 
 Hosts an HMAC-authenticated WebSocket the StandIn media bridge
 dials into, and drives the call: dialogue (realtime
@@ -21,13 +21,13 @@ from __future__ import annotations
 import logging
 
 from .cli import register_cli as _register_cli
-from .cli import teams_voice_command as _teams_voice_command
+from .cli import teams_call_command as _teams_call_command
 from .tools import (
     CALL_USER_SCHEMA,
-    TEAMS_VOICE_STATUS_SCHEMA,
+    TEAMS_CALL_STATUS_SCHEMA,
     check_requirements,
     handle_call_user,
-    handle_teams_voice_status,
+    handle_teams_call_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def _on_session_end(**_kwargs) -> None:
 def register(ctx) -> None:
     """Plugin entry point — register the status tool, CLI, and lifecycle hook.
 
-    Called once by the plugin loader when ``teams_voice`` is enabled via
+    Called once by the plugin loader when ``teams_call`` is enabled via
     ``plugins.enabled`` in config.yaml. The context is captured so the rest of
     the package reaches Hermes only through its public services (``ctx.llm``,
     ``ctx.dispatch_tool``) via the :mod:`.hermes_api` boundary.
@@ -56,10 +56,10 @@ def register(ctx) -> None:
     hermes_api.set_plugin_context(ctx)
 
     ctx.register_tool(
-        name="teams_voice_status",
-        toolset="teams_voice",
-        schema=TEAMS_VOICE_STATUS_SCHEMA,
-        handler=handle_teams_voice_status,
+        name="teams_call_status",
+        toolset="teams_call",
+        schema=TEAMS_CALL_STATUS_SCHEMA,
+        handler=handle_teams_call_status,
         check_fn=check_requirements,
         emoji="📞",
     )
@@ -69,7 +69,7 @@ def register(ctx) -> None:
     # plugin places the call, the message is spoken on answer.
     ctx.register_tool(
         name="call_user",
-        toolset="teams_voice",
+        toolset="teams_call",
         schema=CALL_USER_SCHEMA,
         handler=handle_call_user,
         check_fn=check_requirements,
@@ -77,14 +77,22 @@ def register(ctx) -> None:
     )
 
     ctx.register_cli_command(
-        name="teams-voice",
+        name="teams-call",
         help="Microsoft Teams voice/video (CVI) bridge (serve, status)",
         setup_fn=_register_cli,
-        handler_fn=_teams_voice_command,
+        handler_fn=_teams_call_command,
         description=(
             "Run the HMAC-authenticated bridge the StandIn media bridge "
-            "connects to. See: hermes teams-voice status"
+            "connects to. See: hermes teams-call status"
         ),
     )
 
+
     ctx.register_hook("on_session_end", _on_session_end)
+
+    # Phase 2b: gateway platform registration (spike verdict GO). The gateway
+    # hosts the voice bridge when the platform is enabled; `hermes teams-call
+    # serve` remains the standalone fallback. Best-effort on older hosts.
+    from .gateway_adapter import register_platform as _register_platform
+
+    _register_platform(ctx)

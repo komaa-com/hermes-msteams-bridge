@@ -12,7 +12,16 @@ this repo; the hosted StandIn media bridge handles the Teams media so these feat
 - **Realtime speech-to-speech** (`--handler realtime`) - OpenAI/Azure Realtime; low
   latency, full-duplex feel.
 - **Streaming STT → agent → TTS** (`--handler streaming`) - half-duplex, works with
-  any STT/TTS provider (needs `ffmpeg`).
+  any STT/TTS provider (needs `ffmpeg`). Note: the visual call tools
+  (`show_file`, `show_web_page`, `walkthrough`, progress panel,
+  `set_call_language`) are realtime-mode features; streaming mode covers
+  dialogue, vision auto-attach, and minutes.
+- **Gateway-resident mode (phase 2b)** - enable the `teams_call` platform in
+  the gateway and `hermes gateway run` hosts the voice bridge itself: one
+  process, streaming utterances become real gateway agent turns (sessions,
+  authorization, approvals), and cron jobs can `deliver=teams_call` - the bot
+  calls you and speaks the result. `hermes teams-call serve` remains the
+  standalone fallback.
 - **Barge-in** - the caller can interrupt the bot mid-reply; playback is flushed
   (`assistant.cancel`) and the model response is cancelled immediately.
 - **Verbal interrupts (EN/AR/FR/DE)** - deterministic "stop" / "توقف" / "arrête" /

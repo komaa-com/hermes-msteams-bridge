@@ -20,6 +20,8 @@ import base64
 import logging
 import os
 
+from .config import plugin_env
+
 logger = logging.getLogger(__name__)
 
 ENDPOINT = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
@@ -29,8 +31,8 @@ def resolve_config() -> dict | None:
     """Resolve ``{api_key, voice_id, model_id}`` from env or the documented
     Hermes TTS schema (``tts.elevenlabs.*`` in config.yaml + ``ELEVENLABS_API_KEY``)."""
     api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-    voice_id = os.getenv("TEAMS_VOICE_ELEVENLABS_VOICE_ID", "").strip()
-    model_id = os.getenv("TEAMS_VOICE_ELEVENLABS_MODEL", "").strip() or "eleven_multilingual_v2"
+    voice_id = plugin_env("TEAMS_CALL_ELEVENLABS_VOICE_ID", "").strip()
+    model_id = plugin_env("TEAMS_CALL_ELEVENLABS_MODEL", "").strip() or "eleven_multilingual_v2"
     if not (api_key and voice_id):
         try:
             from .hermes_api import elevenlabs_tts_config
@@ -61,17 +63,17 @@ async def synth_with_timestamps(text: str, config: dict) -> tuple[bytes, list[tu
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=body, headers=headers) as resp:
                 if resp.status != 200:
-                    logger.warning("[teams_voice] elevenlabs with-timestamps %s", resp.status)
+                    logger.warning("[teams_call] elevenlabs with-timestamps %s", resp.status)
                     return None
                 raw_body = await resp.content.read(MAX_BODY + 1)
                 if len(raw_body) > MAX_BODY:
-                    logger.warning("[teams_voice] elevenlabs response exceeded the body cap")
+                    logger.warning("[teams_call] elevenlabs response exceeded the body cap")
                     return None
                 import json as _json
 
                 data = _json.loads(raw_body)
     except (aiohttp.ClientError, ValueError) as exc:
-        logger.warning("[teams_voice] elevenlabs with-timestamps failed: %s", exc)
+        logger.warning("[teams_call] elevenlabs with-timestamps failed: %s", exc)
         return None
 
     audio_b64 = data.get("audio_base64")

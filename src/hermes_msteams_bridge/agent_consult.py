@@ -23,9 +23,15 @@ class AgentConsult:
 
     def __init__(self, model: str | None = None, session_id: str | None = None) -> None:
         import threading
+        import uuid
 
         self._model = model
         self._session_id = session_id  # session continuity (per-thread/per-aad scope)
+        # Stable task id for the agent's tool sessions. Without one, Hermes
+        # mints a fresh UUID per turn, so the "watch it work" browser capture
+        # can never target THIS consult's browser session (round 8) — it would
+        # read the shared default session instead.
+        self.browser_task_id = f"teams_call:consult:{session_id or uuid.uuid4().hex[:8]}"
         self._agent = None  # run_agent.AIAgent, built on first use
         # Serialize consults: AIAgent is not concurrency-safe, and a timed-out
         # consult's thread keeps running — the lock stops a later consult from
@@ -81,7 +87,24 @@ class AgentConsult:
             from .hermes_api import build_consult_agent
 
             self._agent = build_consult_agent(**self._agent_kwargs())
-        return self._agent.chat(query)
+        # Pin the tool-session task id (run_conversation forwards it to the
+        # turn context) so browser captures can find this consult's session.
+        run = getattr(self._agent, "run_conversation", None)
+        if run is not None and self._accepts_task_id(run):
+            result = run(query, task_id=self.browser_task_id)
+            if isinstance(result, dict):
+                return str(result.get("final_response") or "")
+            return str(result)
+        return self._agent.chat(query)  # older host without the kwarg
+
+    @staticmethod
+    def _accepts_task_id(fn) -> bool:
+        import inspect
+
+        try:
+            return "task_id" in inspect.signature(fn).parameters
+        except (TypeError, ValueError):
+            return False
 
     async def ask(self, query: str, *, timeout_s: float = 45.0) -> str:
         """Run ``query`` through the agent and return a concise spoken result."""
@@ -99,7 +122,7 @@ class AgentConsult:
             # D4: never promise a follow-up that nothing will deliver. The
             # consult thread is abandoned on timeout; say so honestly and point
             # at the path that DOES deliver (the background task tool).
-            logger.warning("[teams_voice] consult timed out after %.0fs; result dropped", timeout_s)
+            logger.warning("[teams_call] consult timed out after %.0fs; result dropped", timeout_s)
             # The timed-out thread is still running on this agent (threads
             # cannot be killed). Drop our reference so the NEXT consult builds
             # a fresh agent instead of sharing state with the zombie.
@@ -109,5 +132,5 @@ class AgentConsult:
                 "in the background and I'll send you the result when it's done."
             )
         except Exception:  # noqa: BLE001 — never let a consult crash the call
-            logger.error("[teams_voice] agent consult failed", exc_info=True)
+            logger.error("[teams_call] agent consult failed", exc_info=True)
             return "Sorry, I ran into an error working on that."

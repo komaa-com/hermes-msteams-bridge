@@ -11,7 +11,7 @@ model, the three tiers, and how the shared secret works.
 ## The connection model
 
 - **The plugin is a local WebSocket server.** When you run
-  `hermes teams-voice serve`, it binds `127.0.0.1:8443` by default and waits.
+  `hermes teams-call serve`, it binds `127.0.0.1:8443` by default and waits.
 - **The StandIn media bridge is the client.** For each Teams call it opens **one
   WebSocket** to `/voice/msteams/stream/{callId}` on your server.
 - **Authentication is HMAC over a shared secret.** Both sides hold the same secret.
@@ -69,10 +69,10 @@ Use it to: run the assistant in production for your users.
 ## Where the shared secret comes from
 
 - **Sandbox:** the sandbox page issues a secret for the session - copy it into
-  `TEAMS_VOICE_SHARED_SECRET`.
+  `TEAMS_CALL_SHARED_SECRET`.
 - **Free / Subscription:** **pairing your bot in the StandIn dashboard issues the
-  secret.** Copy it into `TEAMS_VOICE_SHARED_SECRET` (keep it in `~/.hermes/.env`,
-  referenced from `config.yaml` as `${TEAMS_VOICE_SHARED_SECRET}`).
+  secret.** Copy it into `TEAMS_CALL_SHARED_SECRET` (keep it in `~/.hermes/.env`,
+  referenced from `config.yaml` as `${TEAMS_CALL_SHARED_SECRET}`).
 
 The value in your config **must equal** the value StandIn holds, or the HMAC
 handshake fails with `401`.

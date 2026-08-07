@@ -1,4 +1,4 @@
-name: teams_voice
+name: teams_call
 version: 0.3.5
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
@@ -14,55 +14,57 @@ kind: standalone
 # Pure-Python driver: runs anywhere Hermes runs. The StandIn media bridge it
 # pairs with is a separate, hosted process reached over the WebSocket.
 provides_tools:
-  - teams_voice_status
+  - teams_call_status
   - call_user
 hooks:
   - on_session_end
 optional_env:
-  - name: TEAMS_VOICE_SHARED_SECRET
+  - name: TEAMS_CALL_SHARED_SECRET
     description: "HMAC secret shared with the StandIn media bridge (must equal the value paired in StandIn)."
     password: true
-  - name: TEAMS_VOICE_HOST
+  - name: TEAMS_CALL_HOST
     description: "Bind address for the bridge WebSocket server (default 127.0.0.1)."
-  - name: TEAMS_VOICE_PORT
+  - name: TEAMS_CALL_PORT
     description: "Port for the bridge WebSocket server (default 8443)."
-  - name: TEAMS_VOICE_ALLOWLIST
-    description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless TEAMS_VOICE_ALLOW_ALL is set)."
-  - name: TEAMS_VOICE_ALLOW_ALL
+  - name: TEAMS_CALL_ALLOWLIST
+    description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless TEAMS_CALL_ALLOW_ALL is set)."
+  - name: TEAMS_CALL_ALLOW_ALL
     description: "Explicit opt-in to accept any inbound caller when the allowlist is empty (default false = deny)."
-  - name: TEAMS_VOICE_WAKE_PHRASES
+  - name: TEAMS_CALL_WAKE_PHRASES
     description: "Comma-separated group-call wake phrases (default: assistant,hermes)."
-  - name: TEAMS_VOICE_MEETING_RECAP
+  - name: TEAMS_CALL_MEETING_RECAP
     description: "Post end-of-call meeting minutes to the Teams chat (true/false)."
-  - name: TEAMS_VOICE_MAX_VISION_PER_MINUTE
+  - name: TEAMS_CALL_MAX_VISION_PER_MINUTE
     description: "Per-call vision spend cap across look_at_screen + ambient push (0 = unlimited)."
-  - name: TEAMS_VOICE_SESSION_SCOPE
+  - name: TEAMS_CALL_SESSION_SCOPE
     description: "Agent session continuity: per-call | per-thread | per-aad."
-  - name: TEAMS_VOICE_WORKER_BASE_URL
+  - name: TEAMS_CALL_WORKER_BASE_URL
     description: "Loopback HTTP endpoint the StandIn media bridge exposes for outbound place-call (default http://127.0.0.1:9440)."
-  - name: TEAMS_VOICE_TENANT_ID
+  - name: TEAMS_CALL_TENANT_ID
     description: "Default Azure AD tenant for outbound calls (falls back to TEAMS_TENANT_ID)."
-  - name: TEAMS_VOICE_REALTIME_BACKEND
+  - name: TEAMS_CALL_REALTIME_BACKEND
     description: "Realtime speech provider: azure | openai."
-  - name: TEAMS_VOICE_AZURE_ENDPOINT
+  - name: TEAMS_CALL_AZURE_ENDPOINT
     description: "Azure OpenAI resource endpoint for the realtime model."
-  - name: TEAMS_VOICE_AZURE_DEPLOYMENT
+  - name: TEAMS_CALL_AZURE_DEPLOYMENT
     description: "Azure realtime deployment name (e.g. gpt-realtime)."
-  - name: TEAMS_VOICE_AZURE_API_VERSION
+  - name: TEAMS_CALL_AZURE_API_VERSION
     description: "Azure realtime API version (e.g. 2025-04-01-preview)."
-  - name: TEAMS_VOICE_REALTIME_VOICE
+  - name: TEAMS_CALL_REALTIME_VOICE
     description: "Realtime voice name (e.g. cedar)."
-  - name: TEAMS_VOICE_LANGUAGES
+  - name: TEAMS_CALL_LANGUAGES
     description: "Comma-separated languages the realtime assistant handles (e.g. en,fr,de,ar). Empty = auto-detect and mirror the caller."
-  - name: TEAMS_VOICE_BILINGUAL
-    description: "DEPRECATED alias for TEAMS_VOICE_LANGUAGES=ar,en."
-  - name: TEAMS_VOICE_ALLOWLIST_ALLOW_NAMES
+  - name: TEAMS_CALL_BILINGUAL
+    description: "DEPRECATED alias for TEAMS_CALL_LANGUAGES=ar,en."
+  - name: TEAMS_CALL_ALLOWLIST_ALLOW_NAMES
     description: "Also match the allowlist against caller display names (weaker; default false)."
-  - name: TEAMS_VOICE_ALLOW_REMOTE_WORKER
+  - name: TEAMS_CALL_ALLOW_REMOTE_WORKER
     description: "Permit outbound place-call to a non-loopback endpoint (default false)."
-  - name: TEAMS_VOICE_REQUIRE_RECORDING_STATUS
+  - name: TEAMS_CALL_REQUIRE_RECORDING_STATUS
     description: "Gate media processing until Teams recording is active (default true)."
   - name: TEAMS_SHAREPOINT_SITE_ID
     description: "Optional; reserved for a future large-file SharePoint delivery path. The minutes .docx file card itself needs no SharePoint - it uses the Bot Framework attachment contract with the bot credentials."
-  - name: TEAMS_VOICE_SHOW_FILE_ROOT
-    description: "Root directory show_file may display from (containment; default <hermes home>/workspace/teams_voice_show - a dedicated presentation dir). Everything outside it is refused."
+  - name: TEAMS_CALL_WATCH_BROWSER_TASKS
+    description: "Opt-in: while a background task runs, periodically show the agent's live browser on the tile (each capture may invoke the auxiliary vision model - cost-bearing; throttled to 10 s)."
+  - name: TEAMS_CALL_SHOW_FILE_ROOT
+    description: "Root directory show_file may display from (containment; default <hermes home>/workspace/teams_call_show - a dedicated presentation dir). Everything outside it is refused."

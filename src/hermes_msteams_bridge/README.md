@@ -7,7 +7,7 @@ full config and wire reference, see the
 
 ## What this package does
 
-`teams_voice` is a Hermes plugin that adds **Microsoft Teams voice/video** to a
+`teams_call` is a Hermes plugin that adds **Microsoft Teams voice/video** to a
 Hermes agent. It hosts a local, HMAC-authenticated WebSocket server. The hosted
 **StandIn media bridge** joins the Teams call and dials into that server; this
 package runs the *brain* of the call - dialogue (realtime speech-to-speech or
@@ -16,7 +16,7 @@ driver cues (expression / visemes / show-to-caller) - and sends them back over t
 WebSocket. StandIn renders in the Teams call; this package drives.
 
 ```
-StandIn media bridge ──HMAC WebSocket──▶ teams_voice (this package)
+StandIn media bridge ──HMAC WebSocket──▶ teams_call (this package)
   (joins the Teams call)                   • bridge_server.py - WS server
                                            • handlers.py       - call brain
                                            • realtime/         - speech-to-speech
@@ -49,7 +49,7 @@ here - this package is the *media/voice* half.
 | ElevenLabs TTS (timestamp alignment) | `elevenlabs_tts.py` |
 | Outbound "call me back" place-call | `outbound.py` |
 | Agent-facing status tool | `tools.py` |
-| CLI (`hermes teams-voice {status,serve}`) | `cli.py` |
+| CLI (`hermes teams-call {status,serve}`) | `cli.py` |
 | Plugin registration | `__init__.py` |
 
 ## Call handlers
@@ -92,7 +92,7 @@ wiki page.
 ## Configuration
 
 `TeamsVoiceConfig` (`config.py`) resolves values in priority order: the
-`plugins.entries.teams_voice.config` block in `config.yaml`, then environment
+`plugins.entries.teams_call.config` block in `config.yaml`, then environment
 variables, then safe defaults. `RealtimeConfig` (`realtime/openai_client.py`)
 resolves the realtime provider (OpenAI or Azure) the same way. Secrets are never
 logged. Every key, env var, and default is documented on the
@@ -104,11 +104,11 @@ Example `config.yaml`:
 ```yaml
 plugins:
   enabled:
-    - teams_voice
+    - teams_call
   entries:
-    teams_voice:
+    teams_call:
       config:
-        shared_secret: ${TEAMS_VOICE_SHARED_SECRET}   # secret stays in .env
+        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # secret stays in .env
         host: 127.0.0.1
         port: 8443
         realtime:
@@ -124,7 +124,7 @@ plugins:
 ```
 
 Each config.yaml key has a matching env var (e.g. `realtime.azure_endpoint` ↔
-`TEAMS_VOICE_AZURE_ENDPOINT`); config.yaml wins where both are set.
+`TEAMS_CALL_AZURE_ENDPOINT`); config.yaml wins where both are set.
 
 ## Microsoft Graph permissions (the bot app)
 
@@ -145,8 +145,8 @@ unused). Pairing your own bot with StandIn is done in the StandIn dashboard - se
 ## Run
 
 ```bash
-hermes teams-voice status      # show resolved config + readiness
-hermes teams-voice serve --handler realtime   # run the bridge server (foreground)
+hermes teams-call status      # show resolved config + readiness
+hermes teams-call serve --handler realtime   # run the bridge server (foreground)
 # or standalone:
 python -m hermes_msteams_bridge.bridge_server
 ```

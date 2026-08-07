@@ -87,7 +87,7 @@ class CallSession:
         except (ConnectionError, RuntimeError) as exc:
             # A send failure means the call is gone; surface it rather than
             # silently "succeeding" on a dead socket.
-            logger.warning("[teams_voice] send failed on %s: %s", self.call_id, exc)
+            logger.warning("[teams_call] send failed on %s: %s", self.call_id, exc)
             raise
 
     async def send_audio_frame(self, seq: int, timestamp_ms: int, payload_base64: str) -> None:
@@ -117,7 +117,7 @@ class CallSessionHandler:
 
     async def on_session_start(self, session: CallSession, msg: protocol.SessionStart) -> None:
         logger.info(
-            "[teams_voice] session.start call=%s thread=%s dir=%s caller=%s",
+            "[teams_call] session.start call=%s thread=%s dir=%s caller=%s",
             msg.call_id, msg.thread_id, msg.direction, msg.caller.display_name,
         )
 
@@ -129,7 +129,7 @@ class CallSessionHandler:
 
     async def on_recording_status(self, session: CallSession, msg: protocol.RecordingStatus) -> None:
         session.recording_active = msg.status == "active"
-        logger.info("[teams_voice] recording.status call=%s = %s", session.call_id, msg.status)
+        logger.info("[teams_call] recording.status call=%s = %s", session.call_id, msg.status)
 
     async def on_participants(self, session: CallSession, msg: protocol.Participants) -> None:
         session.human_count = msg.count
@@ -141,7 +141,7 @@ class CallSessionHandler:
         ...  # base no-op; the realtime/streaming handlers speak the text (H4 cutoff goodbye)
 
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
-        logger.info("[teams_voice] session.end call=%s reason=%s", session.call_id, msg.reason)
+        logger.info("[teams_call] session.end call=%s reason=%s", session.call_id, msg.reason)
 
 
 HandlerFactory = Callable[[], CallSessionHandler]
@@ -169,8 +169,8 @@ class BridgeServer:
         """Bind and start serving. Raises if no shared secret is configured."""
         if not self.config.configured:
             raise RuntimeError(
-                "teams_voice bridge has no shared secret "
-                "(set TEAMS_VOICE_SHARED_SECRET or config.extra.shared_secret)"
+                "teams_call bridge has no shared secret "
+                "(set TEAMS_CALL_SHARED_SECRET or config.extra.shared_secret)"
             )
         app = web.Application()
         route = f"{self.config.path.rstrip('/')}/{{call_id}}"
@@ -182,7 +182,7 @@ class BridgeServer:
         site = web.TCPSite(self._runner, self.config.host, self.config.port)
         await site.start()
         logger.info(
-            "[teams_voice] bridge listening host=%s port=%s path=%s",
+            "[teams_call] bridge listening host=%s port=%s path=%s",
             self.config.host, self.config.port, route,
         )
 
@@ -232,7 +232,7 @@ class BridgeServer:
             replay_guard=self._replay,
         )
         if not ok:
-            logger.warning("[teams_voice] upgrade rejected call=%s: %s", call_id, reason)
+            logger.warning("[teams_call] upgrade rejected call=%s: %s", call_id, reason)
             return web.Response(status=401, text="unauthorized")
 
         # Reserve the slots BEFORE the async ws.prepare(): two upgrades that both
@@ -268,7 +268,7 @@ class BridgeServer:
             # Same callId already connected — close the NEW socket to avoid
             # clobbering the live call (mirrors the TS driver's duplicate guard).
             if call_id in self._live:
-                logger.warning("[teams_voice] rejected duplicate connection for %s", call_id)
+                logger.warning("[teams_call] rejected duplicate connection for %s", call_id)
                 await ws.close(code=WSCloseCode.POLICY_VIOLATION, message=b"duplicate-callId")
                 return ws
 
@@ -279,7 +279,7 @@ class BridgeServer:
                 await self._read_loop(session, handler)
             finally:
                 self._live.pop(call_id, None)
-                logger.debug("[teams_voice] connection closed %s", call_id)
+                logger.debug("[teams_call] connection closed %s", call_id)
             return ws
         finally:
             _release()
@@ -308,11 +308,11 @@ class BridgeServer:
                     msg = await asyncio.wait_for(session._ws.receive(), timeout=timeout)
                 except asyncio.TimeoutError:
                     if not session.started:
-                        logger.warning("[teams_voice] no session.start within %ss; closing %s",
+                        logger.warning("[teams_call] no session.start within %ss; closing %s",
                                        timeout, session.call_id)
                     else:
                         logger.warning(
-                            "[teams_voice] call %s exceeded max duration %ss; closing",
+                            "[teams_call] call %s exceeded max duration %ss; closing",
                             session.call_id, self.config.max_call_duration_s,
                         )
                     await session._ws.close()
@@ -326,7 +326,7 @@ class BridgeServer:
                 try:
                     parsed = protocol.decode(msg.data)
                 except protocol.ProtocolError as exc:
-                    logger.warning("[teams_voice] bad frame on %s: %s", session.call_id, exc)
+                    logger.warning("[teams_call] bad frame on %s: %s", session.call_id, exc)
                     continue
 
                 await self._dispatch(session, handler, parsed)
@@ -344,7 +344,7 @@ class BridgeServer:
                     )
                 except Exception:  # noqa: BLE001 — teardown is best-effort
                     logger.error(
-                        "[teams_voice] teardown error on abrupt close of %s",
+                        "[teams_call] teardown error on abrupt close of %s",
                         session.call_id, exc_info=True,
                     )
 
@@ -366,7 +366,7 @@ class BridgeServer:
                 # would key off different ids.
                 if parsed.call_id != session.call_id:
                     logger.warning(
-                        "[teams_voice] session.start callId mismatch (authenticated=%s payload=%s); closing",
+                        "[teams_call] session.start callId mismatch (authenticated=%s payload=%s); closing",
                         session.call_id, parsed.call_id,
                     )
                     await session._ws.close()
@@ -393,7 +393,7 @@ class BridgeServer:
                 await session._ws.close()
         except Exception:  # noqa: BLE001 — a handler fault must not kill the call
             logger.error(
-                "[teams_voice] handler error on %s frame=%s",
+                "[teams_call] handler error on %s frame=%s",
                 session.call_id, getattr(parsed, "type", "?"), exc_info=True,
             )
 

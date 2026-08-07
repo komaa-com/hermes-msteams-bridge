@@ -59,7 +59,7 @@ class EchoCallSessionHandler(CallSessionHandler):
         try:
             await session.send_expression(expression.HAPPY)
         except Exception:  # noqa: BLE001 — cosmetic; never fail the call
-            logger.debug("[teams_voice] echo: expression send failed", exc_info=True)
+            logger.debug("[teams_call] echo: expression send failed", exc_info=True)
 
     async def on_audio_frame(self, session: CallSession, msg: protocol.AudioFrame) -> None:
         if not session.recording_active:
@@ -126,7 +126,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             # Without a working realtime brain the caller would sit in silent dead
             # air until they hang up. Mirror OpenClaw's closeCall(): tear the Teams
             # call down cleanly instead. (on_session_end then closes rt.)
-            logger.error("[teams_voice] realtime connect failed for %s", session.call_id, exc_info=True)
+            logger.error("[teams_call] realtime connect failed for %s", session.call_id, exc_info=True)
             await self._close_call("realtime-connect-failed")
             return
         # Start in MANUAL response mode (auto-response off): until participants is
@@ -210,11 +210,11 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         session = self._session
         if session is None or session.closed:
             return
-        logger.info("[teams_voice] closing Teams call %s: %s", session.call_id, reason)
+        logger.info("[teams_call] closing Teams call %s: %s", session.call_id, reason)
         try:
             await session._ws.close()
         except Exception:  # noqa: BLE001 — teardown is best-effort
-            logger.debug("[teams_voice] error closing call ws for %s", session.call_id, exc_info=True)
+            logger.debug("[teams_call] error closing call ws for %s", session.call_id, exc_info=True)
 
     async def _on_realtime_closed(self, reason: str = "provider-closed") -> None:
         """The realtime provider dropped mid-call → end the Teams call cleanly."""
@@ -223,7 +223,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
     async def _on_realtime_error(self, error: object) -> None:
         """Provider 'error' event. The session already reset _response_active so the
         next turn can speak; surface it here for observability / future recovery."""
-        logger.warning("[teams_voice] realtime provider error on %s: %s",
+        logger.warning("[teams_call] realtime provider error on %s: %s",
                        self._session.call_id if self._session else "?", error)
 
     async def on_recording_status(self, session: CallSession, msg: protocol.RecordingStatus) -> None:
@@ -299,8 +299,17 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             return
         await self._rt.request_say(f"Say this to the caller, then stop: {text}")
 
+    async def speak_text(self, text: str) -> None:
+        """Gateway delivery into this live call (phase 2b): speak ``text``."""
+        if self._rt is not None and (text or "").strip():
+            await self._rt.request_say(f"Relay this to the caller now: {text}")
+
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
         await super().on_session_end(session, msg)
+        if getattr(self, "_gateway_adapter", None) is not None:
+            from .gateway_adapter import unregister_live_call
+
+            unregister_live_call(self._thread_id, self)
         if self._ambient_task is not None:
             self._ambient_task.cancel()
             self._ambient_task = None
@@ -540,8 +549,22 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
         self._processing = True  # half-duplex: hold the turn while we speak
         await self._speak_turn(text)
 
+    async def speak_text(self, text: str) -> None:
+        """Gateway delivery into this live call (phase 2b): speak the agent's
+        reply through the TTS pipeline (markdown-stripped in _speak)."""
+        text = (text or "").strip()
+        if not text:
+            return
+        self._meeting.add("Assistant", text)
+        self._processing = True
+        await self._speak_turn(text)
+
     async def on_session_end(self, session: CallSession, msg: protocol.SessionEnd) -> None:
         await super().on_session_end(session, msg)
+        if getattr(self, "_gateway_adapter", None) is not None:
+            from .gateway_adapter import unregister_live_call
+
+            unregister_live_call(self._thread_id, self)
         # Cancel an in-flight utterance job so we don't speak after hangup.
         if self._utterance_task is not None:
             self._utterance_task.cancel()
@@ -624,20 +647,49 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             await self._safe_expression(expression.THINKING)
             # Auto-attach vision: prepend a fresh frame's description as context.
             vision_ctx = await self._vision_context()
-            reply = await self._consult.ask(f"{vision_ctx}{transcript}" if vision_ctx else transcript)
+            text = f"{vision_ctx}{transcript}" if vision_ctx else transcript
+            adapter = getattr(self, "_gateway_adapter", None)
+            if adapter is not None:
+                # Phase 2b: a REAL gateway agent turn — sessions, authorization
+                # and approvals apply; the reply returns via adapter.send()
+                # -> speak_text. Fall back to the inline consult on failure.
+                if await self._emit_gateway_turn(adapter, text):
+                    return
+            reply = await self._consult.ask(text)
             self._meeting.add("Assistant", reply)
             await self._speak(reply)
         except Exception:  # noqa: BLE001 — never let a turn crash the call
-            logger.error("[teams_voice] streaming turn failed", exc_info=True)
+            logger.error("[teams_call] streaming turn failed", exc_info=True)
         finally:
             self._buf.reset()
             self._processing = False
+
+    async def _emit_gateway_turn(self, adapter, text: str) -> bool:
+        """Hand the utterance to the gateway agent loop as a MessageEvent."""
+        try:
+            from gateway.platforms.base import MessageEvent, MessageType
+
+            caller = self._caller
+            source = adapter.build_source(
+                chat_id=self._thread_id or (self._session.call_id if self._session else "call"),
+                chat_name="Teams voice call",
+                chat_type="dm",
+                user_id=(caller.aad_id if caller else None),
+                user_name=(caller.display_name if caller else None),
+            )
+            await adapter.handle_message(MessageEvent(
+                text=text, message_type=MessageType.TEXT, source=source,
+            ))
+            return True
+        except Exception:  # noqa: BLE001 — degrade to the inline consult
+            logger.error("[teams_call] gateway turn failed; falling back inline", exc_info=True)
+            return False
 
     async def _transcribe(self, pcm: bytes) -> str:
         from .hermes_api import hermes_home, transcribe
         from .streaming_audio import write_wav_pcm16
 
-        d = hermes_home() / "cache" / "teams_voice"
+        d = hermes_home() / "cache" / "teams_call"
         d.mkdir(parents=True, exist_ok=True)
         wav = d / f"utt_{uuid.uuid4().hex}.wav"
         try:
@@ -702,7 +754,7 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
 
         from .hermes_api import hermes_home, text_to_speech
 
-        d = hermes_home() / "cache" / "teams_voice"
+        d = hermes_home() / "cache" / "teams_call"
         d.mkdir(parents=True, exist_ok=True)
         out = d / f"tts_{uuid.uuid4().hex}.mp3"
         try:

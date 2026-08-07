@@ -60,7 +60,7 @@ async def synth_with_timing(text: str) -> tuple[bytes, CharTiming] | None:
             if result is not None:
                 return result
         except Exception:  # noqa: BLE001 — timing is an upgrade, never a blocker
-            logger.warning("[teams_voice] timed TTS provider %s failed", name, exc_info=True)
+            logger.warning("[teams_call] timed TTS provider %s failed", name, exc_info=True)
     return None
 
 
@@ -78,13 +78,13 @@ def _elevenlabs_available() -> bool:
     from . import elevenlabs_tts
     from .hermes_api import active_tts_provider
 
-    import os
+    from .config import plugin_env
 
     provider = active_tts_provider()
     # Consent is explicit: either tts.provider selects elevenlabs, or the
     # operator set the plugin's OWN voice-id env (a deliberate opt-in). An
     # empty/default provider with a leftover key must never divert speech.
-    explicitly_opted_in = bool(os.getenv("TEAMS_VOICE_ELEVENLABS_VOICE_ID", "").strip())
+    explicitly_opted_in = bool(plugin_env("TEAMS_CALL_ELEVENLABS_VOICE_ID", "").strip())
     if provider != "elevenlabs" and not explicitly_opted_in:
         return False
     return elevenlabs_tts.resolve_config() is not None

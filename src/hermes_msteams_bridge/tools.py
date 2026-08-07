@@ -1,6 +1,6 @@
-"""Agent-facing tools for the teams_voice bridge.
+"""Agent-facing tools for the teams_call bridge.
 
-Two global agent tools: the read-only ``teams_voice_status`` probe and
+Two global agent tools: the read-only ``teams_call_status`` probe and
 ``call_user`` — chat-to-call (§3.6): a user asks in Teams chat, the agent
 places a voice call and speaks the message on answer. The realtime call tools
 (``look_at_screen``, ``show_to_caller``, ``post_meeting_minutes``) are surfaced
@@ -15,10 +15,10 @@ import json
 import threading
 from typing import Any, Dict
 
-from .config import resolve_config
+from .config import plugin_env, resolve_config
 
-TEAMS_VOICE_STATUS_SCHEMA: Dict[str, Any] = {
-    "name": "teams_voice_status",
+TEAMS_CALL_STATUS_SCHEMA: Dict[str, Any] = {
+    "name": "teams_call_status",
     "description": (
         "Report the Microsoft Teams voice/video (CVI) bridge configuration and "
         "readiness: bind host/port, whether a shared secret is configured, "
@@ -39,26 +39,52 @@ def check_requirements() -> bool:
     return True
 
 
-def handle_teams_voice_status(args: dict | None = None, **_kwargs: Any) -> str:
+def _port_active(host: str, port: int) -> bool:
+    """True when something is accepting on host:port — the bridge itself, or
+    a conflicting process (either way: the port is owned)."""
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
     """Status probe. Hermes dispatches ``handler(args, **kwargs)``, so the
     positional args dict must be accepted even though this tool takes none."""
-    from .hermes_api import hermes_version_note, probe_boundaries
+    from .hermes_api import hermes_version_note, load_hermes_config, probe_boundaries
 
     cfg = resolve_config()
     boundaries = probe_boundaries()  # logs each missing surface at WARNING
+    deps = check_requirements()
+    boundaries_ok = all(b["ok"] for b in boundaries)
+    try:
+        hermes_cfg = load_hermes_config() or {}
+    except Exception:  # noqa: BLE001 — status must never crash on bad config
+        hermes_cfg = {}
+    enabled = (hermes_cfg.get("plugins") or {}).get("enabled") or []
+    plat = (hermes_cfg.get("platforms") or {}).get("teams_call") or {}
     return json.dumps(
         {
-            "ok": True,
+            # Honest verdict (round 8): unconfigured or missing surfaces is
+            # NOT ok — "ok": true used to be unconditional.
+            "ok": bool(cfg.configured and deps and boundaries_ok),
             "configured": cfg.configured,  # bool — never the secret itself
             "host": cfg.host,
             "port": cfg.port,
             "path": cfg.path,
-            "deps_available": check_requirements(),
+            # Someone (bridge or a conflicting process) owns the configured port.
+            "port_active": _port_active(cfg.host, cfg.port),
+            "plugin_enabled": "teams_call" in enabled if isinstance(enabled, list) else False,
+            "platform_enabled": bool(plat.get("enabled")) if isinstance(plat, dict) else False,
+            "deps_available": deps,
             "hermes": hermes_version_note(),
             "boundaries": boundaries,
             # contract_available: every surface exists. operational_ready:
             # additionally, no provider/config check_fn failed (None = n/a).
-            "boundaries_ok": all(b["ok"] for b in boundaries),
+            "boundaries_ok": boundaries_ok,
             "operational_ok": all(b.get("operational") is not False for b in boundaries),
         }
     )
@@ -149,21 +175,21 @@ def handle_call_user(args: dict | None = None, **kwargs: Any) -> str:
 
     cfg = resolve_config()
     if not cfg.configured:
-        return json.dumps({"error": "teams_voice is not configured (no shared secret)"})
+        return json.dumps({"error": "teams_call is not configured (no shared secret)"})
     # STRICTER than inbound (review round 5): outbound dialing requires an
     # EXPLICIT allowlist entry — allow_all covers who may call the bot, never
     # who the bot may dial. Otherwise a chat user (or a prompt injection in
     # any chat surface) turns the bot into a model-controlled dialer.
     if not cfg.allowlist or (aad_id or "").strip().lower() not in cfg.allowlist:
         return json.dumps(
-            {"error": "outbound calls require the callee on an explicit teams_voice allowlist"}
+            {"error": "outbound calls require the callee on an explicit teams_call allowlist"}
         )
     if not _call_user_rate_ok():
         return json.dumps({"error": "outbound call rate limit reached; try again later"})
     # Tenant comes from operator config only — never from the model.
     tenant = cfg.tenant_id
     if not tenant:
-        return json.dumps({"error": "no tenant configured (set TEAMS_VOICE_TENANT_ID)"})
+        return json.dumps({"error": "no tenant configured (set TEAMS_CALL_TENANT_ID)"})
 
     from .call_session_base import _pending_set
     from .outbound import OutboundError, place_call
@@ -194,7 +220,7 @@ def handle_call_user(args: dict | None = None, **kwargs: Any) -> str:
     fallback_thread = chat_id if platform == "teams" else ""
     _pending_set(call_id, message, thread_id=fallback_thread)
     logger.info(
-        "[teams_voice] AUDIT call_user: callee=%s callId=%s fallback_thread=%s",
+        "[teams_call] AUDIT call_user: callee=%s callId=%s fallback_thread=%s",
         aad_id, call_id, "yes" if fallback_thread else "no",
     )
     return json.dumps(

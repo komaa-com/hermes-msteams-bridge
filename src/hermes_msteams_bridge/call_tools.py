@@ -49,7 +49,7 @@ class CallToolRunner:
             if name == "post_meeting_minutes":
                 return await meeting.post_minutes(h._consult, h._meeting, h._thread_id)
         except Exception:  # noqa: BLE001 — a tool fault must not break the call
-            logger.error("[teams_voice] tool %s failed", name, exc_info=True)
+            logger.error("[teams_call] tool %s failed", name, exc_info=True)
             return "Sorry, that didn't work."
         return f"Unknown tool: {name}."
 
@@ -152,7 +152,7 @@ class CallToolRunner:
                 return f"Stopped after {shown} of {len(paths)} images."
             return "I'm showing it on screen now." if shown == 1 else f"Showing you {shown} images."
         except Exception:  # noqa: BLE001
-            logger.error("[teams_voice] show_to_caller failed", exc_info=True)
+            logger.error("[teams_call] show_to_caller failed", exc_info=True)
             return "I made the image but couldn't display it."
 
     def _show_root(self) -> Path | None:
@@ -166,7 +166,7 @@ class CallToolRunner:
             # Default is a DEDICATED presentation directory, not the whole
             # workspace: a benign-looking filename in a broad root is still a
             # disclosure. Operators widen it explicitly via show_file_root.
-            return hermes_home() / "workspace" / "teams_voice_show"
+            return hermes_home() / "workspace" / "teams_call_show"
         except Exception:  # noqa: BLE001 — no Hermes home (bare install)
             return None
 
@@ -192,7 +192,7 @@ class CallToolRunner:
         except ShowFileError as exc:
             return exc.spoken
         except Exception:  # noqa: BLE001 — render failure must not break the call
-            logger.error("[teams_voice] show_file failed", exc_info=True)
+            logger.error("[teams_call] show_file failed", exc_info=True)
             return "I couldn't display that file."
         if len(data) > 6 * 1024 * 1024:  # keep the WS frame bounded post-base64
             return "That file renders too large to put on screen."
@@ -222,7 +222,7 @@ class CallToolRunner:
             return reason
         # Call-scoped browser session: without a task_id every call shares
         # Hermes's "default" session (cookies + navigation collisions).
-        task_id = f"teams_voice:{getattr(h._session, 'call_id', '') or 'call'}"
+        task_id = f"teams_call:{getattr(h._session, 'call_id', '') or 'call'}"
         try:
             result = await asyncio.wait_for(
                 browser_page_screenshot(url, task_id=task_id), timeout=45.0
@@ -359,7 +359,7 @@ class CallToolRunner:
                 allow_remote=h._bridge.allow_remote_worker,
             )
         except OutboundError as exc:
-            logger.warning("[teams_voice] call_me_back failed: %s", exc)
+            logger.warning("[teams_call] call_me_back failed: %s", exc)
             return "I couldn't place the call-back just now."
         call_id = result.get("callId")
         if not call_id:
@@ -390,7 +390,10 @@ class CallToolRunner:
         return "Got it — I'll work on that in the background and send you the result."
 
     async def _progress_loop(self, job: asyncio.Task, query: str) -> None:
-        """Refresh the tile with an honest progress panel while ``job`` runs."""
+        """Refresh the tile while ``job`` runs: the honest progress panel, and
+        (opt-in, phase 4b) periodic real frames of the agent's browser when the
+        task is browser-shaped — throttled because each capture may invoke the
+        auxiliary vision model."""
         import time as _time
 
         from .progress_panel import render_panel
@@ -398,6 +401,10 @@ class CallToolRunner:
         h = self._h
         turn0 = getattr(h, "_turn_id", None)
         started = _time.monotonic()
+        bridge = getattr(h, "_bridge", None)
+        watch_browser = bool(getattr(bridge, "watch_browser_tasks", False)) if bridge else False
+        last_browser_try = 0.0
+        last_digest = ""
         try:
             while not job.done():
                 session = h._session
@@ -405,21 +412,76 @@ class CallToolRunner:
                     return
                 if turn0 is not None and getattr(h, "_turn_id", turn0) != turn0:
                     return  # the caller moved on; free the tile
-                if _time.monotonic() - started > 300:
+                now = _time.monotonic()
+                if now - started > 300:
                     return  # panel is a courtesy, not wallpaper
-                png = await asyncio.to_thread(render_panel, query, _time.monotonic() - started)
-                if png is None:
-                    return  # Pillow absent — spoken ack only
-                try:
-                    await session.send_display_image(
-                        base64.b64encode(png).decode("ascii"), "image/png",
-                        duration_ms=4000, caption="working…",
-                    )
-                except Exception:  # noqa: BLE001
-                    return
+                shown_browser = False
+                if watch_browser and now - last_browser_try >= 10.0:
+                    last_browser_try = now
+                    shot = await self._grab_agent_browser_frame(last_digest)
+                    if shot is not None:
+                        frame_bytes, last_digest = shot
+                        try:
+                            await session.send_display_image(
+                                base64.b64encode(frame_bytes).decode("ascii"), "image/png",
+                                duration_ms=9000, caption="working… (live view)",
+                            )
+                            shown_browser = True
+                        except Exception:  # noqa: BLE001
+                            return
+                if not shown_browser:
+                    png = await asyncio.to_thread(render_panel, query, now - started)
+                    if png is None:
+                        return  # Pillow absent — spoken ack only
+                    try:
+                        await session.send_display_image(
+                            base64.b64encode(png).decode("ascii"), "image/png",
+                            duration_ms=4000, caption="working…",
+                        )
+                    except Exception:  # noqa: BLE001
+                        return
                 await asyncio.sleep(2.0)
         except asyncio.CancelledError:
             raise
+
+    async def _grab_agent_browser_frame(self, last_digest: str) -> tuple[bytes, str] | None:
+        """One throttled capture of the consult agent's OWN browser session
+        (its pinned ``browser_task_id`` — the default session belongs to
+        whoever else is browsing, round 8). ``None`` when the agent isn't
+        browsing, the frame is unchanged, or capture fails. Change detection
+        is content-based: Hermes writes a fresh screenshot file per capture,
+        so path comparison would always report "changed"."""
+        import hashlib
+
+        from .hermes_api import dispatch_tool_async, _parse_tool_json
+
+        consult = getattr(self._h, "_consult", None)
+        task_id = str(getattr(consult, "browser_task_id", "") or "")
+        if not task_id:
+            return None  # no consult agent -> nothing of ours to watch
+        try:
+            result = _parse_tool_json(await asyncio.wait_for(
+                dispatch_tool_async(
+                    "browser_vision", {"question": "Progress check.", "task_id": task_id}
+                ),
+                timeout=20.0,
+            ))
+        except asyncio.TimeoutError:
+            return None
+        meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+        path = str(result.get("screenshot_path") or meta.get("screenshot_path") or "")
+        if not path:
+            return None
+        try:
+            data = Path(path).read_bytes()
+        except OSError:
+            return None
+        if not data.startswith(b"\x89PNG") or len(data) > 6 * 1024 * 1024:
+            return None
+        digest = hashlib.sha256(data).hexdigest()
+        if digest == last_digest:
+            return None
+        return data, digest
 
     async def _run_background_task(self, query: str, caller, job_id: str | None = None) -> None:
         from .background_jobs import job_begin, job_complete
@@ -429,7 +491,7 @@ class CallToolRunner:
         try:
             result = await h._consult.ask(query, timeout_s=300.0)
         except Exception:  # noqa: BLE001
-            logger.error("[teams_voice] background task failed", exc_info=True)
+            logger.error("[teams_call] background task failed", exc_info=True)
             result = "I couldn't complete that task."
         # Prefer delivering the result to the Teams chat (no call-back needed);
         # fall back to a voice call-back when there's no postable thread.
@@ -453,7 +515,7 @@ class CallToolRunner:
                 allow_remote=h._bridge.allow_remote_worker,
             )
         except OutboundError as exc:
-            logger.warning("[teams_voice] background callback failed: %s", exc)
+            logger.warning("[teams_call] background callback failed: %s", exc)
             return
         cid = res.get("callId")
         if cid:

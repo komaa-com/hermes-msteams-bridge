@@ -4,7 +4,7 @@ The gateway-residency spike (backlog criteria 1-4) demands lifecycle
 properties the old ``serve`` body could not demonstrate: readiness only after
 the listener accepts, loud dual-run failure, signal-free idempotent shutdown,
 and every owned task cancelled AND awaited. This service encodes those
-properties once; ``hermes teams-voice serve`` uses it today, and a future
+properties once; ``hermes teams-call serve`` uses it today, and a future
 gateway platform adapter would be a thin shell over it
 (``connect()`` = ``start()`` + ``_mark_connected()``, ``disconnect()`` =
 ``stop()``) — which is exactly what makes the spike measurable in tests.
@@ -26,12 +26,18 @@ class VoiceBridgeService:
     durable-job resume). Signal handling stays with the caller — the service
     itself must work gateway-resident, where it does not own the process."""
 
-    def __init__(self, config: TeamsVoiceConfig, handler_factory) -> None:
+    def __init__(
+        self, config: TeamsVoiceConfig, handler_factory, *, background_workers: bool = True
+    ) -> None:
         self._config = config
         self._server = BridgeServer(config=config, handler_factory=handler_factory)
         self._tasks: list[asyncio.Task] = []
         self._ready = False
         self._stopped = False
+        # False = listener only. The smoke check runs offline; the reaper and
+        # durable-job resume DELIVER (agent consults, Teams messages), which an
+        # install-verification step must never trigger (round 8).
+        self._background_workers = background_workers
 
     @property
     def ready(self) -> bool:
@@ -65,12 +71,13 @@ class VoiceBridgeService:
             try:
                 await resume_pending_jobs()
             except Exception:  # noqa: BLE001
-                logger.error("[teams_voice] job resume failed", exc_info=True)
+                logger.error("[teams_call] job resume failed", exc_info=True)
 
-        self._tasks = [
-            asyncio.create_task(_no_answer_reaper(), name="teams_voice_reaper"),
-            asyncio.create_task(_resume_jobs(), name="teams_voice_job_resume"),
-        ]
+        if self._background_workers:
+            self._tasks = [
+                asyncio.create_task(_no_answer_reaper(), name="teams_call_reaper"),
+                asyncio.create_task(_resume_jobs(), name="teams_call_job_resume"),
+            ]
         self._ready = True
 
     async def stop(self) -> None:

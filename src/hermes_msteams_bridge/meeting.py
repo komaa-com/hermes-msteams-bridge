@@ -83,7 +83,7 @@ async def _deliver_to_teams(conversation_id: str, text: str) -> bool:
     result = await send_teams_message(conversation_id, text)
     if not result.get("success"):
         logger.warning(
-            "[teams_voice] minutes delivery to %s failed: %s",
+            "[teams_call] minutes delivery to %s failed: %s",
             conversation_id, result.get("error"),
         )
     return bool(result.get("success"))
@@ -102,10 +102,10 @@ def _save_docx_artifact(minutes: str) -> str | None:
         d.mkdir(parents=True, exist_ok=True)
         path = d / f"minutes_{uuid.uuid4().hex[:8]}.docx"
         write_minutes_docx("Meeting minutes", minutes, str(path))
-        logger.info("[teams_voice] minutes document saved: %s", path)
+        logger.info("[teams_call] minutes document saved: %s", path)
         return str(path)
     except Exception:  # noqa: BLE001 — artifact is optional
-        logger.warning("[teams_voice] minutes .docx generation failed", exc_info=True)
+        logger.warning("[teams_call] minutes .docx generation failed", exc_info=True)
         return None
 
 
@@ -140,7 +140,7 @@ async def post_minutes(
     try:
         minutes = await consult.ask(summarize_prompt(transcript.render()), timeout_s=120.0)
     except Exception:  # noqa: BLE001 — recap must never crash teardown
-        logger.error("[teams_voice] meeting summary failed", exc_info=True)
+        logger.error("[teams_call] meeting summary failed", exc_info=True)
         return "I couldn't summarize the meeting."
     minutes = (minutes or "").strip()
     if not minutes:
