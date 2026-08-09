@@ -101,6 +101,14 @@ def parse_inbound(body: str) -> InboundChat:
     for key in ("tenantId", "conversationId", "activityId"):
         if not isinstance(raw.get(key), str) or not raw[key]:
             raise ValueError(f"{key} is required")
+    # Additive changes keep schemaVersion; a BREAKING change bumps it, and the contract says both
+    # sides ship before it is emitted. Processing a higher version as if it were v1 would apply v1
+    # semantics to a payload that no longer means the same thing - refuse instead, loudly.
+    version = raw.get("schemaVersion", SCHEMA_VERSION)
+    if isinstance(version, int) and version > SCHEMA_VERSION:
+        raise ValueError(
+            f"unsupported schemaVersion {version} (this bridge speaks {SCHEMA_VERSION}) - upgrade the bridge"
+        )
     sender = raw.get("sender") if isinstance(raw.get("sender"), dict) else {}
     return InboundChat(
         tenant_id=raw["tenantId"],
@@ -204,16 +212,38 @@ class ManagedChatServer:
         self._chains: dict[str, asyncio.Task] = {}
 
     async def start(self) -> None:
+        """Bind the chat lane. TRANSACTIONAL: either the server is listening when this returns, or
+        nothing of it survives. The previous version created the ClientSession first and let a bind
+        failure (port taken, bad host) propagate with the session still open and the AppRunner
+        half-set-up - one leaked connector per failed start, and callers that had already started
+        OTHER services never got to unwind them."""
         import aiohttp
         from aiohttp import web
 
-        self._session = aiohttp.ClientSession()
-        app = web.Application(client_max_size=1024 * 1024)
-        app.router.add_post(self._config.path, self._handle)
-        self._runner = web.AppRunner(app)
-        await self._runner.setup()
-        site = web.TCPSite(self._runner, self._config.host, self._config.port)
-        await site.start()
+        session = aiohttp.ClientSession()
+        runner = None
+        try:
+            app = web.Application(client_max_size=1024 * 1024)
+            app.router.add_post(self._config.path, self._handle)
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, self._config.host, self._config.port)
+            await site.start()
+        except BaseException:
+            # Unwind in reverse. Cleanup itself must not mask the original error.
+            if runner is not None:
+                try:
+                    await runner.cleanup()
+                except Exception:  # noqa: BLE001
+                    logger.debug("managed chat: runner cleanup failed during startup unwind", exc_info=True)
+            try:
+                await session.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("managed chat: session close failed during startup unwind", exc_info=True)
+            raise
+
+        self._session = session
+        self._runner = runner
         logger.info(
             "managed chat: listening on %s:%s%s", self._config.host, self._config.port, self._config.path
         )
@@ -324,6 +354,8 @@ class ManagedChatServer:
     REPLY_ATTEMPTS = 3
 
     async def _post_reply(self, reply: dict[str, Any]) -> None:
+        import aiohttp
+
         body = json.dumps(reply, separators=(",", ":"))
         # Typing indicators never retry (ephemeral by nature).
         attempts = 1 if reply.get("kind") == "typing" else self.REPLY_ATTEMPTS
@@ -340,6 +372,11 @@ class ManagedChatServer:
                         HEADER_TIMESTAMP: ts,
                         HEADER_SIGNATURE: sig,
                     },
+                    # The 300s turn budget covers the AGENT, not delivery. Without this the reply POST
+                    # inherits aiohttp's very generous default and can hold the conversation's ordered
+                    # chain for minutes PER ATTEMPT - three retries of a black-holed connection would
+                    # wedge that conversation far longer than the turn it was answering.
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as resp:
                     if resp.status < 400:
                         return

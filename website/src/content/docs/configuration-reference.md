@@ -34,6 +34,23 @@ plugins:
           # ...realtime keys below...
 ```
 
+## StandIn Managed Bot (chat lane)
+
+Set these when StandIn provides the Teams bot (installed from the Teams Store) rather than you
+running your own Azure bot. The chat lane is off until `chat_secret` is set - there is no separate
+enable flag.
+
+| Setting | Env | Default | What it does |
+|---|---|---|---|
+| `chat_secret` | `TEAMS_CALL_CHAT_SECRET` | - | The connection's CHAT key from the StandIn portal. Separate from `shared_secret` (voice) on purpose: neither key can sign for the other, and they rotate independently. |
+| `messages_port` | `TEAMS_CALL_MANAGED_BOT_PORT` | `8444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (8443). |
+| `messages_path` | `TEAMS_CALL_MANAGED_BOT_PATH` | `/managed/chat` | Path the gateway posts to. |
+| `gateway_reply_endpoint` | `TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL` | StandIn's `/api/chat/reply` | Where replies are posted back. |
+| `host` | `TEAMS_CALL_HOST` | `0.0.0.0` | Shared with the voice lane. Defaults to all interfaces because the gateway must reach it; set it to your tailnet/VPN address (or firewall the port) if you reach the agent privately. |
+
+One agent instance serves ONE StandIn connection - the chat secret belongs to a single tenant
+binding. Run a second instance for a second organization; never share a secret across tenants.
+
 ## Bridge settings (`TeamsVoiceConfig`)
 
 | config.yaml key | Env var | Default | Meaning |

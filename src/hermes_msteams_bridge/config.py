@@ -165,8 +165,9 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         or plugin_env("TEAMS_CALL_HOST", "").strip()
         or "127.0.0.1"
     )
+    # `calling_port` is the name (paired with `messages_port`); `port` stays accepted.
     port = _coerce_int(
-        extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
+        extra.get("calling_port") or extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
     )
     path = str(extra.get("path") or "").strip() or DEFAULT_PATH
     window = _coerce_int(
@@ -241,6 +242,28 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
 
 
 def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
+    """FLAT by owner decision (2026-08-09): the managed lane's host/ports/endpoint are plugin-level
+    settings, so they live at the plugin root next to their voice counterparts rather than in a
+    nested block:
+
+        teams_call:
+          config:
+            shared_secret: ${TEAMS_CALL_SHARED_SECRET}     # voice lane
+            chat_secret:   ${TEAMS_CALL_CHAT_SECRET}       # managed chat lane
+            host: 127.0.0.1                                # shared by both lanes
+            calling_port: 8443
+            messages_port: 8444
+            gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
+
+    The one thing NOT collapsed is the secret. `shared_secret` cannot serve both lanes: StandIn
+    issues two keys per connection on purpose (voice signs "{ts}.{callId}" on the WS handshake, chat
+    signs "{ts}.{rawBody}" over HTTP), so a key that leaks from one surface cannot forge the other,
+    and they rotate independently. Reusing one value would silently fail HMAC anyway - the portal
+    stores them as separate columns and the gateway signs with the chat one.
+
+    Older shapes still resolve, deterministically: nested managed_bot/managed_chat blocks, `port`
+    for the voice port, and the TEAMS_CALL_MANAGED_{BOT,CHAT}_* env names.
+    """
     """Resolve the managed chat lane from ``managed_chat:`` under this plugin's config block, with
     ``TEAMS_CALL_MANAGED_CHAT_*`` env as the fallback - the same precedence every other setting here
     uses. Nested under the plugin instead of a top-level namespace so config.yaml reads as one
@@ -262,6 +285,10 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
         block = extra.get("managed_chat")
     block = block if isinstance(block, Mapping) else {}
 
+    def _flat(flat_key: str, nested_key: str) -> str:
+        """Flat plugin-root key wins; the nested block is the compatibility path."""
+        return str(extra.get(flat_key) or block.get(nested_key) or "").strip()
+
     def _env(suffix: str) -> str:
         """TEAMS_CALL_MANAGED_BOT_* first, the older MANAGED_CHAT_* spelling as fallback."""
         return (
@@ -269,25 +296,30 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
             or plugin_env(f"TEAMS_CALL_MANAGED_CHAT_{suffix}", "").strip()
         )
     return {
+        # chat_secret at the plugin root; managed_bot.chat_secret / .secret still accepted.
         "managed_chat_secret": (
-            str(block.get("secret") or "").strip()
+            str(extra.get("chat_secret") or "").strip()
+            or str(block.get("chat_secret") or block.get("secret") or "").strip()
+            or plugin_env("TEAMS_CALL_CHAT_SECRET", "").strip()
             or _env("SECRET")
         ),
+        # The chat lane binds the SAME host as voice unless told otherwise - one machine, one
+        # interface. Defaults to the voice host so "bind to the tailnet" is a single edit.
         "managed_chat_host": (
-            str(block.get("host") or "").strip()
+            _flat("host", "host")
             or _env("HOST")
             or "0.0.0.0"
         ),
         "managed_chat_port": _coerce_int(
-            block.get("port") or _env("PORT"), 8444
+            extra.get("messages_port") or block.get("port") or _env("PORT"), 8444
         ),
         "managed_chat_path": (
-            str(block.get("path") or "").strip()
+            _flat("messages_path", "path")
             or _env("PATH")
             or "/managed/chat"
         ),
         "managed_chat_gateway_reply_url": (
-            str(block.get("gateway_reply_url") or "").strip()
+            _flat("gateway_reply_endpoint", "gateway_reply_url")
             or _env("GATEWAY_REPLY_URL")
             or "https://teams.standin.komaa.com/api/chat/reply"
         ),

@@ -5,13 +5,24 @@ description: "Install the plugin into Hermes, enable it, connect to StandIn, and
 
 This walks you from nothing to a working Teams voice call with your Hermes agent.
 
+:::note[Two ways to connect]
+**StandIn Managed Bot (recommended)** - StandIn provides the Teams bot. Install StandIn from the
+Teams Store, connect this agent in the StandIn portal, paste the two secrets it gives you. **No
+Azure bot registration, no App ID or client secret, and no separate Teams messaging setup** - this
+plugin hosts both the voice and chat lanes. See [Connecting to StandIn](/connecting-to-standin/).
+
+**Bring your own Azure bot (advanced)** - you own the Entra app, client secret and Azure Bot
+resource. The prerequisites below apply to this path.
+:::
+
 ## Prerequisites
 
 - **A working Hermes install.** This is a plugin *on top of* Hermes, not a
   standalone app. Set up Hermes first using the
-  [official docs](https://hermes-agent.nousresearch.com/docs), including
+  [official docs](https://hermes-agent.nousresearch.com/docs). For the
+  bring-your-own-bot path you also need
   [Microsoft Teams messaging](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/teams)
-  if you want the chat plane too.
+  for the chat plane; with the StandIn Managed Bot you do not.
 - **Python ≥ 3.10** (the same interpreter your Hermes install uses).
 - **A realtime provider key** for the realtime engine - an **OpenAI** key or an
   **Azure OpenAI** key with a realtime deployment. (Only needed for

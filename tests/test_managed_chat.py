@@ -6,6 +6,7 @@ of bytes."""
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import re
 from pathlib import Path
@@ -140,6 +141,42 @@ class TestConfig:
         assert cfg.port == 8444
         assert cfg.path == "/managed/chat"
         assert "/api/chat/reply" in cfg.gateway_reply_url
+
+
+class TestStartupIsTransactional:
+    """A failed bind must leave NOTHING behind - no open ClientSession, no half-set-up runner."""
+
+    def test_port_conflict_leaves_no_open_session(self):
+        asyncio.run(self._scenario())
+
+    async def _scenario(self):
+        import aiohttp
+        from aiohttp import web
+
+        from hermes_msteams_bridge.managed_chat import ManagedChatConfig, ManagedChatServer
+
+        # Occupy a port so the second bind is guaranteed to fail.
+        blocker = web.Application()
+        blocker_runner = web.AppRunner(blocker)
+        await blocker_runner.setup()
+        site = web.TCPSite(blocker_runner, "127.0.0.1", 0)
+        await site.start()
+        taken = blocker_runner.addresses[0][1]
+
+        before = len([o for o in gc.get_objects() if isinstance(o, aiohttp.ClientSession) and not o.closed])
+        server = ManagedChatServer(
+            ManagedChatConfig(chat_secret="k", gateway_reply_url="http://x/api/chat/reply",
+                              host="127.0.0.1", port=taken),
+            lambda _m: "unused",
+        )
+        try:
+            with pytest.raises(OSError):
+                await server.start()
+            gc.collect()
+            after = len([o for o in gc.get_objects() if isinstance(o, aiohttp.ClientSession) and not o.closed])
+            assert after == before, "a failed start leaked an open aiohttp ClientSession"
+        finally:
+            await blocker_runner.cleanup()
 
 
 class TestManagedBotConfigResolution:

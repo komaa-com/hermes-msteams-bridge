@@ -51,6 +51,15 @@ def _port_active(host: str, port: int) -> bool:
         return False
 
 
+def _managed_chat_ok(cfg) -> bool:
+    """True when the managed chat lane is either not configured (fine - voice-only deployment) or
+    configured AND listening. Configured-but-silent is the failure this exists to surface."""
+    if not cfg.managed_chat_secret:
+        return True
+    host = "127.0.0.1" if cfg.managed_chat_host in ("0.0.0.0", "::") else cfg.managed_chat_host
+    return _port_active(host, cfg.managed_chat_port)
+
+
 def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
     """Status probe. Hermes dispatches ``handler(args, **kwargs)``, so the
     positional args dict must be accepted even though this tool takes none."""
@@ -70,7 +79,9 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
         {
             # Honest verdict (round 8): unconfigured or missing surfaces is
             # NOT ok — "ok": true used to be unconditional.
-            "ok": bool(cfg.configured and deps and boundaries_ok),
+            # Chat counts toward the verdict: a configured lane that is not listening is NOT ok,
+            # or the one tool built to answer "is this working?" answers yes while chat is dead.
+            "ok": bool(cfg.configured and deps and boundaries_ok and _managed_chat_ok(cfg)),
             "configured": cfg.configured,  # bool — never the secret itself
             "host": cfg.host,
             "port": cfg.port,

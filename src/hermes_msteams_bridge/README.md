@@ -24,9 +24,13 @@ StandIn media bridge ──HMAC WebSocket──▶ teams_call (this package)
 ```
 
 The plugin is the **WebSocket server** (binds `127.0.0.1:8443` by default); StandIn
-is the **client** that dials in. Chat-plane features (messages, message actions,
-recap posting) are handled by the separate `plugins/platforms/teams` adapter, not
-here - this package is the *media/voice* half.
+is the **client** that dials in.
+
+Chat depends on the connection mode. In **StandIn Managed Bot** mode this package
+also hosts the chat lane itself (`managed_chat.py`, HTTP on `messages_port`), so one
+process carries both planes of one binding. In **bring-your-own-Azure-bot** mode the
+chat plane is the separate `plugins/platforms/teams` adapter and this package is the
+*media/voice* half only.
 
 ## Module map
 

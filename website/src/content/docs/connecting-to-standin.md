@@ -39,6 +39,27 @@ default. Binding to a non-loopback host is possible but the plugin warns you,
 because it exposes the secret to that interface.
 :::
 
+## Connection modes
+
+**StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install StandIn from the
+Teams Store, connect this agent in the StandIn portal, and paste the two secrets it gives you. No
+Azure bot registration, no App ID or client secret. Voice and chat are two lanes of the same
+connection - a WebSocket on `calling_port` and HTTP on `messages_port` - hosted by one process.
+
+```yaml
+plugins:
+  entries:
+    teams_call:
+      config:
+        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # voice lane
+        chat_secret:   ${TEAMS_CALL_CHAT_SECRET}     # managed chat lane
+```
+
+One agent instance serves one connection; run a second instance for a second organization.
+
+**Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot
+resource. The tiers below describe this path.
+
 ## The three tiers
 
 Pick the tier that matches where you are:

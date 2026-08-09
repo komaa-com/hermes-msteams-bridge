@@ -19,6 +19,40 @@ driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, and meeting recap/minutes (posted to the chat, with a local
 `.docx` artifact).
 
+
+### Two ways to connect to Teams
+
+**StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install **StandIn** from the
+Teams Store, connect this agent in the StandIn portal, and paste one secret. No Azure bot
+registration, no App ID or client secret, no separate chat plane to run. Voice and chat are two lanes of
+the SAME StandIn connection - a WebSocket on the calling port and HTTP on the messages port - hosted
+by one process, whether that is `teams-call serve` or the gateway-resident platform.
+
+```yaml
+plugins:
+  entries:
+    teams_call:
+      config:
+        shared_secret: ${TEAMS_CALL_SHARED_SECRET}      # voice
+        managed_bot:
+          # The chat secret from the StandIn portal. Pasting it turns the lane on -
+          # there is no separate enable flag.
+          secret: ${TEAMS_CALL_MANAGED_BOT_SECRET}
+```
+
+The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
+your agent over a private network (Tailscale, VPN, a reverse proxy), set `managed_bot.host` to that
+interface, or firewall the port - the HMAC keeps unauthenticated callers out, but an open port is
+still an open port.
+
+One agent instance serves **one** StandIn connection: the secret is a single value scoped to one
+tenant binding. Serving several tenants means several instances, each with its own secret. Never
+share one secret across tenants.
+
+**Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot resource,
+and the Teams *chat* plane is handled by Hermes's own `platforms/teams` adapter rather than here.
+Choose this when the bot must live entirely inside your tenant.
+
 ## Getting started
 
 This plugin adds **voice and video (CVI)** on top of Hermes Agent's Microsoft Teams
@@ -101,38 +135,6 @@ Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 ```bash
 hermes teams-call serve --handler realtime
 ```
-
-### Two ways to connect to Teams
-
-**StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install **StandIn** from the
-Teams Store, connect this agent in the StandIn portal, and paste one secret. No Azure bot
-registration, no App ID or client secret, no separate chat plane to run - chat and voice arrive over
-the same connection, and `teams-call serve` hosts both.
-
-```yaml
-plugins:
-  entries:
-    teams_call:
-      config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}      # voice
-        managed_bot:
-          # The chat secret from the StandIn portal. Pasting it turns the lane on -
-          # there is no separate enable flag.
-          secret: ${TEAMS_CALL_MANAGED_BOT_SECRET}
-```
-
-The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
-your agent over a private network (Tailscale, VPN, a reverse proxy), set `managed_bot.host` to that
-interface, or firewall the port - the HMAC keeps unauthenticated callers out, but an open port is
-still an open port.
-
-One agent instance serves **one** StandIn connection: the secret is a single value scoped to one
-tenant binding. Serving several tenants means several instances, each with its own secret. Never
-share one secret across tenants.
-
-**Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot resource,
-and the Teams *chat* plane is handled by Hermes's own `platforms/teams` adapter rather than here.
-Choose this when the bot must live entirely inside your tenant.
 
 And, separately, the Teams chat plane + cron:
 
