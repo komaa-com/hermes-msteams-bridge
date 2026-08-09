@@ -255,29 +255,40 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
                   secret: ${TEAMS_CALL_MANAGED_CHAT_SECRET}
                   port: 8444
     """
-    block = extra.get("managed_chat")
+    # `managed_bot` is the name - the StandIn Managed Bot connection, of which chat is one lane.
+    # `managed_chat` stays accepted as an alias so an early adopter's config keeps working.
+    block = extra.get("managed_bot")
+    if not isinstance(block, Mapping):
+        block = extra.get("managed_chat")
     block = block if isinstance(block, Mapping) else {}
+
+    def _env(suffix: str) -> str:
+        """TEAMS_CALL_MANAGED_BOT_* first, the older MANAGED_CHAT_* spelling as fallback."""
+        return (
+            plugin_env(f"TEAMS_CALL_MANAGED_BOT_{suffix}", "").strip()
+            or plugin_env(f"TEAMS_CALL_MANAGED_CHAT_{suffix}", "").strip()
+        )
     return {
         "managed_chat_secret": (
             str(block.get("secret") or "").strip()
-            or plugin_env("TEAMS_CALL_MANAGED_CHAT_SECRET", "").strip()
+            or _env("SECRET")
         ),
         "managed_chat_host": (
             str(block.get("host") or "").strip()
-            or plugin_env("TEAMS_CALL_MANAGED_CHAT_HOST", "").strip()
+            or _env("HOST")
             or "0.0.0.0"
         ),
         "managed_chat_port": _coerce_int(
-            block.get("port") or plugin_env("TEAMS_CALL_MANAGED_CHAT_PORT", ""), 8444
+            block.get("port") or _env("PORT"), 8444
         ),
         "managed_chat_path": (
             str(block.get("path") or "").strip()
-            or plugin_env("TEAMS_CALL_MANAGED_CHAT_PATH", "").strip()
+            or _env("PATH")
             or "/managed/chat"
         ),
         "managed_chat_gateway_reply_url": (
             str(block.get("gateway_reply_url") or "").strip()
-            or plugin_env("TEAMS_CALL_MANAGED_CHAT_GATEWAY_REPLY_URL", "").strip()
+            or _env("GATEWAY_REPLY_URL")
             or "https://teams.standin.komaa.com/api/chat/reply"
         ),
     }

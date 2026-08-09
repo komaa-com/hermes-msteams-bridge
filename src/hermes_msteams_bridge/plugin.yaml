@@ -6,9 +6,10 @@ description: >-
   then drives dialogue (realtime speech-to-speech or streaming
   STT->agent->TTS), perception (camera/screen vision), and the avatar rendering
   cues (expression / visemes / show-to-caller). StandIn joins the Teams call and
-  renders; this plugin sends the drivers. Chat-plane integration (messages,
-  message actions, recap posting) is handled by the existing ``platforms/teams``
-  adapter, not here.
+  renders; this plugin sends the drivers. Chat: in StandIn MANAGED BOT mode this
+  plugin also hosts the chat lane (``managed_bot.secret``), so one connection
+  carries both voice and chat. In bring-your-own-Azure-bot mode the chat plane is
+  the existing ``platforms/teams`` adapter instead, not here.
 author: Komaa
 kind: standalone
 # Pure-Python driver: runs anywhere Hermes runs. The StandIn media bridge it
@@ -38,16 +39,16 @@ optional_env:
     description: "Per-call vision spend cap across look_at_screen + ambient push (0 = unlimited)."
   - name: TEAMS_CALL_SESSION_SCOPE
     description: "Agent session continuity: per-call | per-thread | per-aad."
-  - name: TEAMS_CALL_MANAGED_CHAT_SECRET
-    description: "StandIn MANAGED chat lane: the connection's CHAT key (separate from the voice shared secret). Unset = the chat lane stays off and voice is unaffected."
+  - name: TEAMS_CALL_MANAGED_BOT_SECRET
+    description: "StandIn Managed Bot connection: the chat lane's CHAT key (separate from the voice shared secret). Unset = the chat lane stays off and voice is unaffected."
     password: true
-  - name: TEAMS_CALL_MANAGED_CHAT_HOST
+  - name: TEAMS_CALL_MANAGED_BOT_HOST
     description: "Bind address for the managed chat endpoint (default 0.0.0.0)."
-  - name: TEAMS_CALL_MANAGED_CHAT_PORT
+  - name: TEAMS_CALL_MANAGED_BOT_PORT
     description: "Port for the managed chat endpoint (default 8444)."
-  - name: TEAMS_CALL_MANAGED_CHAT_PATH
+  - name: TEAMS_CALL_MANAGED_BOT_PATH
     description: "Path the StandIn gateway POSTs inbound messages to (default /managed/chat)."
-  - name: TEAMS_CALL_MANAGED_CHAT_GATEWAY_REPLY_URL
+  - name: TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL
     description: "StandIn gateway reply endpoint the agent POSTs answers back to (default https://teams.standin.komaa.com/api/chat/reply)."
   - name: TEAMS_CALL_WORKER_BASE_URL
     description: "Loopback HTTP endpoint the StandIn media bridge exposes for outbound place-call (default http://127.0.0.1:9440)."

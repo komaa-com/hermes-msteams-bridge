@@ -142,6 +142,64 @@ class TestConfig:
         assert "/api/chat/reply" in cfg.gateway_reply_url
 
 
+class TestManagedBotConfigResolution:
+    """The lane is configured through THIS plugin's contract (plugins.entries.teams_call.config),
+    not a namespace of its own. Precedence must match every other setting: config block first,
+    TEAMS_CALL_* env as fallback."""
+
+    def _resolve(self, extra=None, env=None):
+        import os
+        from hermes_msteams_bridge.config import resolve_config
+
+        old = {}
+        env = env or {}
+        try:
+            for k, v in env.items():
+                old[k] = os.environ.get(k)
+                os.environ[k] = v
+            return resolve_config(extra if extra is not None else {"shared_secret": "voice"})
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_nested_block_under_teams_call_config(self):
+        c = self._resolve({"shared_secret": "voice", "managed_bot": {"secret": "s", "port": 9999}})
+        assert c.managed_chat_secret == "s"
+        assert c.managed_chat_port == 9999
+        assert c.shared_secret == "voice"  # the voice lane is untouched
+
+    def test_managed_chat_is_still_accepted_as_an_alias(self):
+        c = self._resolve({"shared_secret": "voice", "managed_chat": {"secret": "old"}})
+        assert c.managed_chat_secret == "old"
+
+    def test_managed_bot_wins_over_the_alias(self):
+        c = self._resolve({"shared_secret": "voice",
+                           "managed_bot": {"secret": "new"},
+                           "managed_chat": {"secret": "old"}})
+        assert c.managed_chat_secret == "new"
+
+    def test_env_fallback_and_config_precedence(self):
+        # env alone
+        c = self._resolve(env={"TEAMS_CALL_MANAGED_BOT_SECRET": "from-env"})
+        assert c.managed_chat_secret == "from-env"
+        # config block WINS over env
+        c = self._resolve({"shared_secret": "v", "managed_bot": {"secret": "from-config"}},
+                          env={"TEAMS_CALL_MANAGED_BOT_SECRET": "from-env"})
+        assert c.managed_chat_secret == "from-config"
+        # the older env spelling still resolves
+        c = self._resolve(env={"TEAMS_CALL_MANAGED_CHAT_SECRET": "legacy-env"})
+        assert c.managed_chat_secret == "legacy-env"
+
+    def test_unset_means_off_with_sane_defaults(self):
+        c = self._resolve({"shared_secret": "voice"})
+        assert c.managed_chat_secret == ""          # secret is the switch: empty = lane off
+        assert c.managed_chat_port == 8444
+        assert c.managed_chat_path == "/managed/chat"
+
+
 class TestSchemaDrift:
     """protocol/chat-schema.yaml is the source of truth (D6). A subset is legal;
     a name the schema does not know is a typo that silently drops data."""

@@ -77,6 +77,23 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
             "path": cfg.path,
             # Someone (bridge or a conflicting process) owns the configured port.
             "port_active": _port_active(cfg.host, cfg.port),
+            # StandIn Managed Bot chat lane. Reported alongside voice because "is chat working?"
+            # was previously unanswerable from here - the status tool only knew about the voice
+            # socket, so a dead chat lane looked identical to a healthy one.
+            "managed_bot": {
+                "chat_configured": bool(cfg.managed_chat_secret),  # bool - never the secret
+                "chat_host": cfg.managed_chat_host,
+                "chat_port": cfg.managed_chat_port,
+                "chat_path": cfg.managed_chat_path,
+                "chat_port_active": (
+                    _port_active(
+                        "127.0.0.1" if cfg.managed_chat_host in ("0.0.0.0", "::") else cfg.managed_chat_host,
+                        cfg.managed_chat_port,
+                    )
+                    if cfg.managed_chat_secret
+                    else False
+                ),
+            },
             "plugin_enabled": "teams_call" in enabled if isinstance(enabled, list) else False,
             "platform_enabled": bool(plat.get("enabled")) if isinstance(plat, dict) else False,
             "deps_available": deps,
