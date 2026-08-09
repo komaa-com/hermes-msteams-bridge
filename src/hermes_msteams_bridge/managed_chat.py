@@ -359,3 +359,28 @@ class ManagedChatServer:
                 )
             if attempt < attempts:
                 await asyncio.sleep(1.0 * 4 ** (attempt - 1))
+
+# ── shared startup (both hosting paths) ────────────────────────────────────────────────────────────
+
+async def start_managed_chat_if_configured(cfg, respond) -> "ManagedChatServer | None":
+    """Start the StandIn Managed Bot chat lane when a secret is configured; return None otherwise.
+
+    Lives here, not in a caller, because there are TWO hosting paths and they must behave
+    identically: ``hermes teams-call serve`` (standalone) and the gateway-resident platform adapter.
+    The lane originally started only in the CLI path, so anyone running the gateway-hosted platform -
+    the default once ``platforms.teams_call.enabled`` is set - got voice with silently no chat.
+    """
+    if not cfg.managed_chat_secret:
+        return None
+    server = ManagedChatServer(
+        ManagedChatConfig(
+            chat_secret=cfg.managed_chat_secret,
+            gateway_reply_url=cfg.managed_chat_gateway_reply_url,
+            host=cfg.managed_chat_host,
+            port=cfg.managed_chat_port,
+            path=cfg.managed_chat_path,
+        ),
+        respond,
+    )
+    await server.start()
+    return server

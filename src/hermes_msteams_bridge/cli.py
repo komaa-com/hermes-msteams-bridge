@@ -135,9 +135,8 @@ def teams_call_command(args) -> int:
                 from .agent_consult import AgentConsult
                 from .managed_chat import (
                     InboundChat,
-                    ManagedChatConfig,
-                    ManagedChatServer,
                     attachments_note,
+                    start_managed_chat_if_configured,
                 )
 
                 # LRU-capped - unbounded growth is a slow leak on a long-lived process.
@@ -166,15 +165,8 @@ def teams_call_command(args) -> int:
                     # reaches the user instead of the blunt turn-level one.
                     return await consult.ask(query, timeout_s=280.0)
 
-                chat_cfg = ManagedChatConfig(
-                    chat_secret=chat_secret,
-                    gateway_reply_url=cfg.managed_chat_gateway_reply_url,
-                    host=cfg.managed_chat_host,
-                    port=cfg.managed_chat_port,
-                    path=cfg.managed_chat_path,
-                )
-                managed_chat = ManagedChatServer(chat_cfg, _respond)
-                await managed_chat.start()
+                # Shared with the gateway-resident adapter so the two hosting paths cannot drift.
+                managed_chat = await start_managed_chat_if_configured(cfg, _respond)
             # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
             # (Ctrl-C) set the stop event so server.stop() drains live calls -
             # closing each with a reason so per-call teardown runs and the
