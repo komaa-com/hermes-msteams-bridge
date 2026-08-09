@@ -161,12 +161,20 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     """
     extra = extra if extra is not None else plugin_config_block()
 
-    # `calling_secret` pairs with `messages_secret` and with calling_port/messages_port - one vocabulary
-    # for the two Teams planes. `shared_secret` remains accepted (it is what every existing config says).
+    # ONE secret serves both lanes (owner decision 2026-08-09): the portal generates a single value
+    # per connection and the user pastes it once - `secret` / MSTEAMS_CALL_SECRET fills calling AND
+    # messages. Per-lane keys remain as OVERRIDES for split-key deployments. Deliberately a NEW key
+    # rather than falling back to shared_secret: that fallback would silently open the chat listener
+    # on every existing voice-only deployment at upgrade.
+    one_secret = (
+        str(extra.get("secret") or "").strip()
+        or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
+    )
     shared_secret = (
         str(extra.get("calling_secret") or extra.get("shared_secret") or "").strip()
         or plugin_env("MSTEAMS_CALL_CALLING_SECRET", "").strip()
         or plugin_env("TEAMS_CALL_SHARED_SECRET", "").strip()
+        or one_secret
     )
     host = (
         str(extra.get("host") or "").strip()
@@ -311,6 +319,9 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
             or plugin_env("MSTEAMS_CALL_MESSAGES_SECRET", "").strip()
             or plugin_env("TEAMS_CALL_CHAT_SECRET", "").strip()
             or _env("SECRET")
+            # the single connection secret, LAST so a per-lane override always wins
+            or str(extra.get("secret") or "").strip()
+            or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
         ),
         # The chat lane binds the SAME host as voice unless told otherwise - one machine, one
         # interface. Defaults to the voice host so "bind to the tailnet" is a single edit.

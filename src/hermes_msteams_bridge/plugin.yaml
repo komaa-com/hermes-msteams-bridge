@@ -39,6 +39,9 @@ optional_env:
     description: "Per-call vision spend cap across look_at_screen + ambient push (0 = unlimited)."
   - name: TEAMS_CALL_SESSION_SCOPE
     description: "Agent session continuity: per-call | per-thread | per-aad."
+  - name: MSTEAMS_CALL_SECRET
+    description: "The single StandIn connection secret - covers calling AND chat. Paste the value from the StandIn portal; per-lane MSTEAMS_CALL_CALLING_SECRET / MSTEAMS_CALL_MESSAGES_SECRET override it when set."
+    password: true
   - name: TEAMS_CALL_MANAGED_BOT_SECRET
     description: "StandIn Managed Bot connection: the chat lane's CHAT key (separate from the voice shared secret). Unset = the chat lane stays off and voice is unaffected."
     password: true
