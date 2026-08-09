@@ -153,7 +153,13 @@ def teams_call_command(args) -> int:
                     while len(consults) > max_consults:
                         consults.pop(next(iter(consults)))
                     note = attachments_note(message.attachments)
-                    query = "\n".join(x for x in (message.text, note) if x)
+                    # Card submits arrive with EMPTY text and the payload in card_action (protocol v1
+                    # additive field): fold it in so a button press is a meaningful turn.
+                    card_note = (
+                        f"[card button pressed - submit payload: {json.dumps(message.card_action)}]"
+                        if message.card_action else ""
+                    )
+                    query = "\n".join(x for x in (message.text, card_note, note) if x)
                     # Review A4: ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
                     # under the server's TURN_TIMEOUT_S (300) so the consult's own timeout message
                     # reaches the user instead of the blunt turn-level one.

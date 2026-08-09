@@ -160,6 +160,11 @@ types:
         type: array:Attachment
         optional: true
         doc: "Inbound attachments; see Attachment. Absent or empty when there are none."
+      - name: cardAction
+        type: object
+        optional: true
+        nullable: true
+        doc: "Submit payload of an agent card's Action.Submit, relayed verbatim (additive v1 field, review W7). text is empty on these messages; agents that predate the field may ignore them."
       - name: locale
         type: string
         optional: true

@@ -85,6 +85,8 @@ class InboundChat:
     sender_is_linked_owner: bool = False
     attachments: list[dict[str, Any]] = field(default_factory=list)
     locale: str | None = None
+    #: Submit payload of an agent card's Action.Submit (additive v1; text is empty on these).
+    card_action: dict[str, Any] | None = None
 
 
 def parse_inbound(body: str) -> InboundChat:
@@ -110,6 +112,7 @@ def parse_inbound(body: str) -> InboundChat:
         sender_is_linked_owner=bool(sender.get("isLinkedOwner", False)),
         attachments=raw.get("attachments") if isinstance(raw.get("attachments"), list) else [],
         locale=raw.get("locale") if isinstance(raw.get("locale"), str) else None,
+        card_action=raw.get("cardAction") if isinstance(raw.get("cardAction"), dict) else None,
     )
 
 
@@ -246,7 +249,7 @@ class ManagedChatServer:
 
         # ACK first; the gateway's durable relay owns retry between US and IT. A redelivered
         # activity ACKs and does nothing - the first delivery's turn is running (or queued).
-        if self._seen.mark_first(message.activity_id):
+        if self._seen.mark_first(f"{message.tenant_id}:{message.conversation_id}:{message.activity_id}"):
             self._enqueue_turn(message)
         return web.json_response({"ok": True})
 
