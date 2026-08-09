@@ -234,7 +234,7 @@ class TestManagedBotConfigResolution:
         c = self._resolve({"shared_secret": "voice"})
         assert c.managed_chat_secret == ""          # secret is the switch: empty = lane off
         assert c.managed_chat_port == 8444
-        assert c.managed_chat_path == "/managed/chat"
+        assert c.managed_chat_path == "/msteams/messages"
 
 
 class TestSchemaDrift:

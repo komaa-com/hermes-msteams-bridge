@@ -225,6 +225,13 @@ class ManagedChatServer:
         try:
             app = web.Application(client_max_size=1024 * 1024)
             app.router.add_post(self._config.path, self._handle)
+            # Serve the pre-rename path too, so an agent configured before /msteams/messages existed
+            # keeps answering. Costs one route; saves a silent outage on upgrade.
+            from .config import LEGACY_MESSAGES_PATHS
+
+            for legacy in LEGACY_MESSAGES_PATHS:
+                if legacy != self._config.path:
+                    app.router.add_post(legacy, self._handle)
             runner = web.AppRunner(app)
             await runner.setup()
             site = web.TCPSite(runner, self._config.host, self._config.port)

@@ -64,7 +64,7 @@ uv pip install --python /path/to/hermes/venv/bin/python "hermes-msteams-bridge[n
 
 ## 2. Enable the plugin
 
-Entry-point plugins are **opt-in**. Add `teams_call` to `plugins.enabled` in
+Entry-point plugins are **opt-in**. Add `msteams_call` to `plugins.enabled` in
 `~/.hermes/config.yaml`:
 
 ```yaml
@@ -75,11 +75,11 @@ plugins:
 
 :::caution[Pip plugins are enabled in config.yaml only]
 **`hermes plugins enable` does NOT work for pip-installed plugins** - it only sees
-bundled/user-dir plugins. You must add `teams_call` to `plugins.enabled` in
+bundled/user-dir plugins. You must add `msteams_call` to `plugins.enabled` in
 `config.yaml` as above.
 :::
 
-Confirm Hermes now sees it (`teams_call` should appear in the list):
+Confirm Hermes now sees it (`msteams_call` should appear in the list):
 
 ```bash
 hermes plugins list
@@ -103,7 +103,7 @@ plugins:
   enabled:
     - teams_call
   entries:
-    teams_call:
+    msteams_call:
       config:
         shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # must match StandIn
         host: 127.0.0.1
@@ -140,7 +140,7 @@ run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) 
 ## 5. Run the plugin
 
 ```bash
-hermes teams-call serve --handler realtime
+hermes msteams-call serve --handler realtime
 ```
 
 You should see it bind:

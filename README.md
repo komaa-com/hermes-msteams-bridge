@@ -12,7 +12,7 @@ Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Ag
 packaged as a standalone, pip-installable plugin: install it *on top of* a normal
 Hermes install, no fork required.
 
-The plugin (name **`teams_call`**) hosts the HMAC-authenticated WebSocket bridge that
+The plugin (name **`msteams_call`**) hosts the HMAC-authenticated WebSocket bridge that
 the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
@@ -26,12 +26,12 @@ bilingual EN/AR, and meeting recap/minutes (posted to the chat, with a local
 Teams Store, connect this agent in the StandIn portal, and paste one secret. No Azure bot
 registration, no App ID or client secret, no separate chat plane to run. Voice and chat are two lanes of
 the SAME StandIn connection - a WebSocket on the calling port and HTTP on the messages port - hosted
-by one process, whether that is `teams-call serve` or the gateway-resident platform.
+by one process, whether that is `msteams-call serve` or the gateway-resident platform.
 
 ```yaml
 plugins:
   entries:
-    teams_call:
+    msteams_call:
       config:
         shared_secret: ${TEAMS_CALL_SHARED_SECRET}      # voice
         managed_bot:
@@ -119,7 +119,7 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-msteams-brid
 
 ## Enable + run
 
-Entry-point plugins are **opt-in**: add `teams_call` to `plugins.enabled` in
+Entry-point plugins are **opt-in**: add `msteams_call` to `plugins.enabled` in
 **`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
 does **not** work for pip-installed plugins (it only sees bundled/user-dir plugins),
 so enable it in config:
@@ -133,7 +133,7 @@ plugins:
 Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 
 ```bash
-hermes teams-call serve --handler realtime
+hermes msteams-call serve --handler realtime
 ```
 
 And, separately, the Teams chat plane + cron:
@@ -154,7 +154,7 @@ plugins:
   enabled:
     - teams_call                          # entry-point plugins are opt-in
   entries:
-    teams_call:
+    msteams_call:
       config:
         shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # MUST match the secret paired in StandIn
         host: 127.0.0.1
@@ -188,7 +188,7 @@ plugins:
 > **Public OpenAI** instead of Azure: set `backend: openai`, `model: gpt-realtime`,
 > `api_key: ${OPENAI_API_KEY}`, and drop the `azure_*` keys.
 > **Streaming** (STT→agent→TTS) instead of realtime: omit the `realtime:` block and run
-> `hermes teams-call serve --handler streaming` (needs `ffmpeg` on PATH).
+> `hermes msteams-call serve --handler streaming` (needs `ffmpeg` on PATH).
 
 **`~/.hermes/.env`**, the secrets referenced above (plus Teams chat-plane creds if you
 also run `hermes gateway run`):
@@ -239,7 +239,7 @@ teams_call = "hermes_msteams_bridge"
 
 Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the
 `teams-call` CLI, the status tool, and the session hook. Entry-point plugins are
-opt-in, so `teams_call` must be in `plugins.enabled` (add it in `config.yaml`;
+opt-in, so `msteams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 `hermes plugins enable` does not see pip-installed plugins).
 
 ## Requirements
@@ -252,7 +252,7 @@ opt-in, so `teams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 
 This is the same code as the original in-tree plugin, repackaged for pip
 distribution so you don't have to fork Hermes. Install it on **vanilla** Hermes; don't
-also keep a bundled `teams_call` (same name → the entry-point would shadow it).
+also keep a bundled `msteams_call` (same name → the entry-point would shadow it).
 
 - **Voice/CVI** works fully on vanilla Hermes.
 - **Meeting minutes** post to the chat with the Word `.docx` attached as a

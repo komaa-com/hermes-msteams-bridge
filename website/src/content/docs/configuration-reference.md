@@ -24,7 +24,7 @@ plugins:
   enabled:
     - teams_call
   entries:
-    teams_call:
+    msteams_call:
       config:
         shared_secret: ${TEAMS_CALL_SHARED_SECRET}
         host: 127.0.0.1
@@ -37,12 +37,12 @@ plugins:
 ## StandIn Managed Bot (chat lane)
 
 Set these when StandIn provides the Teams bot (installed from the Teams Store) rather than you
-running your own Azure bot. The chat lane is off until `chat_secret` is set - there is no separate
+running your own Azure bot. The chat lane is off until `messages_secret` is set - there is no separate
 enable flag.
 
 | Setting | Env | Default | What it does |
 |---|---|---|---|
-| `chat_secret` | `TEAMS_CALL_CHAT_SECRET` | - | The connection's CHAT key from the StandIn portal. Separate from `shared_secret` (voice) on purpose: neither key can sign for the other, and they rotate independently. |
+| `messages_secret` | `TEAMS_CALL_CHAT_SECRET` | - | The connection's CHAT key from the StandIn portal. Separate from `shared_secret` (voice) on purpose: neither key can sign for the other, and they rotate independently. |
 | `messages_port` | `TEAMS_CALL_MANAGED_BOT_PORT` | `8444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (8443). |
 | `messages_path` | `TEAMS_CALL_MANAGED_BOT_PATH` | `/managed/chat` | Path the gateway posts to. |
 | `gateway_reply_endpoint` | `TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL` | StandIn's `/api/chat/reply` | Where replies are posted back. |

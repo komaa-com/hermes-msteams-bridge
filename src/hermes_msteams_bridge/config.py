@@ -27,7 +27,13 @@ def plugin_env(name: str, default: str = "") -> str:
 
 
 # Default WebSocket path the worker connects to: ``/voice/msteams/stream/{callId}``.
-DEFAULT_PATH = "/voice/msteams/stream"
+# Canonical agent paths, named for the two Teams planes and prefixed with the platform so the pair
+# reads as one convention: wss://host/msteams/calling and https://host/msteams/messages. The previous
+# spellings are served as ALIASES (see LEGACY_*), so an agent deployed before the rename keeps working.
+DEFAULT_PATH = "/msteams/calling"
+LEGACY_PATHS = ("/voice/msteams/stream",)
+DEFAULT_MESSAGES_PATH = "/msteams/messages"
+LEGACY_MESSAGES_PATHS = ("/managed/chat",)
 
 # HMAC upgrade header names — MUST match the companion worker byte-for-byte (it
 # sends these on the WS upgrade and reads them on the outbound-call endpoint).
@@ -156,8 +162,11 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     """
     extra = extra if extra is not None else plugin_config_block()
 
+    # `calling_secret` pairs with `messages_secret` and with calling_port/messages_port - one vocabulary
+    # for the two Teams planes. `shared_secret` remains accepted (it is what every existing config says).
     shared_secret = (
-        str(extra.get("shared_secret") or "").strip()
+        str(extra.get("calling_secret") or extra.get("shared_secret") or "").strip()
+        or plugin_env("MSTEAMS_CALL_CALLING_SECRET", "").strip()
         or plugin_env("TEAMS_CALL_SHARED_SECRET", "").strip()
     )
     host = (
@@ -298,8 +307,9 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
     return {
         # chat_secret at the plugin root; managed_bot.chat_secret / .secret still accepted.
         "managed_chat_secret": (
-            str(extra.get("chat_secret") or "").strip()
+            str(extra.get("messages_secret") or extra.get("chat_secret") or "").strip()
             or str(block.get("chat_secret") or block.get("secret") or "").strip()
+            or plugin_env("MSTEAMS_CALL_MESSAGES_SECRET", "").strip()
             or plugin_env("TEAMS_CALL_CHAT_SECRET", "").strip()
             or _env("SECRET")
         ),
@@ -316,7 +326,7 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
         "managed_chat_path": (
             _flat("messages_path", "path")
             or _env("PATH")
-            or "/managed/chat"
+            or DEFAULT_MESSAGES_PATH
         ),
         "managed_chat_gateway_reply_url": (
             _flat("gateway_reply_endpoint", "gateway_reply_url")

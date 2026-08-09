@@ -46,6 +46,9 @@ documents = ["pypdfium2>=4.30", "pillow>=10"]
 # is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
+msteams_call = "hermes_msteams_bridge"
+# Kept so an existing `plugins.enabled: [teams_call]` keeps loading after the rename. Removing it
+# would silently disable the plugin on every deployed host.
 teams_call = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]

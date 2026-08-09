@@ -1068,7 +1068,7 @@ def test_register_wires_teams_call_surfaces_only():
     try:
         pkg.register(_Ctx())
         cli_names = [n for kind, n in calls if kind == "cli"]
-        assert cli_names == ["teams-call"]  # no legacy alias
+        assert cli_names == ["msteams-call"]  # platform-prefixed; no legacy CLI alias
         assert ("platform", "teams_call") in calls
         assert ("tool", "teams_call_status") in calls
     finally:

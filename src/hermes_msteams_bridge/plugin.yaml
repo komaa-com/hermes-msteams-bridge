@@ -1,4 +1,4 @@
-name: teams_call
+name: msteams_call
 version: 0.4.0
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
