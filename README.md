@@ -33,15 +33,12 @@ plugins:
   entries:
     msteams_call:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}      # voice
-        managed_bot:
-          # The chat secret from the StandIn portal. Pasting it turns the lane on -
-          # there is no separate enable flag.
-          secret: ${TEAMS_CALL_MANAGED_BOT_SECRET}
+        # ONE connection secret from the StandIn portal - covers calls AND chat.
+        secret: ${MSTEAMS_CALL_SECRET}
 ```
 
 The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
-your agent over a private network (Tailscale, VPN, a reverse proxy), set `managed_bot.host` to that
+your agent over a private network (Tailscale, VPN, a reverse proxy), set `host` to that
 interface, or firewall the port - the HMAC keeps unauthenticated callers out, but an open port is
 still an open port.
 
@@ -127,7 +124,7 @@ so enable it in config:
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
 ```
 
 Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
@@ -147,16 +144,16 @@ hermes gateway run
 Config lives in Hermes's own files (this package ships none). Non-secret settings go
 in **`config.yaml`**; secrets go in **`.env`** and are referenced with `${VAR}`.
 
-**`~/.hermes/config.yaml`**, under `plugins.entries.teams_call.config`:
+**`~/.hermes/config.yaml`**, under `plugins.entries.msteams_call.config`:
 
 ```yaml
 plugins:
   enabled:
-    - teams_call                          # entry-point plugins are opt-in
+    - msteams_call                          # entry-point plugins are opt-in
   entries:
     msteams_call:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # MUST match the secret paired in StandIn
+        secret: ${MSTEAMS_CALL_SECRET}   # MUST match the secret StandIn gave you
         host: 127.0.0.1
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
@@ -204,7 +201,7 @@ TEAMS_CLIENT_SECRET=<bot-app-secret>
 TEAMS_TENANT_ID=<azure-ad-tenant-id>
 ```
 
-`shared_secret` **must match** the secret paired in StandIn or the HMAC
+`secret` **must match** the secret StandIn gave you or the HMAC
 handshake fails. Full key reference (every option, defaults, env vars, streaming
 mode, the wire protocol): the
 [**Configuration Reference**](https://komaa-com.github.io/hermes-msteams-bridge/configuration-reference/)
@@ -234,7 +231,7 @@ package exposes:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_call = "hermes_msteams_bridge"
+msteams_call = "hermes_msteams_bridge"
 ```
 
 Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the

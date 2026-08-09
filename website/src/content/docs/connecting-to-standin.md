@@ -42,7 +42,7 @@ because it exposes the secret to that interface.
 ## Connection modes
 
 **StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install StandIn from the
-Teams Store, connect this agent in the StandIn portal, and paste the two secrets it gives you. No
+Teams Store, connect this agent in the StandIn portal, and paste the one secret it gives you. No
 Azure bot registration, no App ID or client secret. Voice and chat are two lanes of the same
 connection - a WebSocket on `calling_port` and HTTP on `messages_port` - hosted by one process.
 

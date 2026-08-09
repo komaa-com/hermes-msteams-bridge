@@ -20,8 +20,9 @@
 # AUTH (identical construction to the StandIn voice HMAC contract)
 #   X-StandIn-Timestamp   unix epoch MILLISECONDS
 #   X-StandIn-Signature   lowercase hex HMAC-SHA256(secret, "{timestampMs}.{rawBody}")
-#   The secret is the connection's CHAT key - separate from the voice key, so
-#   one surface's key can never sign for the other.
+#   The secret is the connection's key. Since the one-secret decision (2026-08-09) StandIn issues ONE
+#   value covering both the calling and messages lanes; deployments may still configure per-lane keys,
+#   but independent rotation is a deployment choice, not a guarantee of this protocol.
 #   Receivers enforce a +/- 5 minute replay window and compare in constant time.
 #
 # EVOLUTION

@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # TTL so a never-answered call-back can't leak its text indefinitely. The
 # in-process dict remains as the fallback when no Hermes home exists (tests,
 # bare installs) — there the two ends are the same process anyway.
-_PENDING_OUTBOUND: dict[str, tuple[str, float]] = {}
+_PENDING_OUTBOUND: dict[str, tuple[str, str, float]] = {}  # callId -> (text, thread_id, expiry)
 _PENDING_TTL_S = 600.0
 
 
@@ -52,7 +52,7 @@ def _safe_call_key(call_id: str) -> str:
 
 def _pending_prune() -> None:
     now = time.monotonic()
-    for k in [k for k, (_t, exp) in _PENDING_OUTBOUND.items() if exp <= now]:
+    for k in [k for k, (_t, _th, exp) in _PENDING_OUTBOUND.items() if exp <= now]:
         _PENDING_OUTBOUND.pop(k, None)
     d = _pending_dir()
     if d is not None:
@@ -82,7 +82,9 @@ def _pending_set(call_id: str, text: str, thread_id: str = "") -> None:
             return
         except OSError:
             logger.warning("[teams_call] pending store write failed; using in-process", exc_info=True)
-    _PENDING_OUTBOUND[call_id] = (text, time.monotonic() + _PENDING_TTL_S)
+    # thread_id rides along so the outcome/stale fallback works from the
+    # in-process store too (round 13) - not only from the file store.
+    _PENDING_OUTBOUND[call_id] = (text, thread_id, time.monotonic() + _PENDING_TTL_S)
 
 
 def _pending_pop(call_id: str) -> str | None:
@@ -197,11 +199,12 @@ class BaseTeamsCallHandler(CallSessionHandler):
             pass
 
 
-# §3.7 plugin-side mitigation: a placed call whose callId never produced a WS
-# session within ``max_age_s`` is treated as a probable no-answer. The scan
-# CLAIMS such entries (deletes them) and returns any with a chat fallback
-# target, so the caller can post the result instead of losing it. The wire-
-# level call-outcome signal stays ON HOLD; this bounds the blind spot.
+# §3.7 timer fallback: a placed call whose callId never produced a WS session
+# within ``max_age_s`` is treated as a probable no-answer. The scan CLAIMS
+# such entries (deletes them) and returns any with a chat fallback target, so
+# the caller can post the result instead of losing it. When the worker sends
+# the wire-level call-outcome signal (see ``deliver_outcome``), the fallback
+# fires immediately instead; this timer covers workers without the signal.
 _STALE_AFTER_S = 180.0
 
 
@@ -239,6 +242,110 @@ def scan_stale_pending(max_age_s: float = _STALE_AFTER_S) -> list[tuple[str, str
         except (OSError, ValueError):
             continue
     return claimed
+
+
+# ── Call-outcome wire (worker-reported, replaces the timer when present) ─────
+#
+# The StandIn worker knows the REAL terminal state of a placed call from the
+# Graph calling API. When it POSTs that outcome (see BridgeServer._handle_outcome),
+# the chat fallback fires immediately with accurate wording instead of waiting
+# for the 180s stale timer. The timer stays as the safety net for workers that
+# never send outcomes (additive protocol: old worker + new plugin still works).
+
+_OUTCOME_WORDING = {
+    "no-answer": "I tried to call you but couldn't reach you.",
+    "declined": "You declined my call - no problem.",
+    "busy": "I tried to call you but the line was busy.",
+    "failed": "I tried to call you but the call could not be completed.",
+}
+# Worker outcomes that mean "the callee will never hear the message".
+UNANSWERED_OUTCOMES = frozenset(_OUTCOME_WORDING)
+
+
+def claim_pending(call_id: str) -> tuple[str, str, str] | None:
+    """Two-phase claim of THIS call's pending entry (no age gate): rename to
+    ``.fallback`` and return ``(text, thread_id, claim_path)``, or ``None``
+    when no entry exists (already delivered, answered, or unknown call).
+    ``claim_path`` is empty for the in-process fallback store (round 13:
+    a pending entry there must still be reachable by the outcome path; the
+    claim is the pop itself, so a failed send cannot be restored - the same
+    best-effort the in-process store always was)."""
+    import json as _json
+
+    d = _pending_dir()
+    if d is not None:
+        f = d / f"{_safe_call_key(call_id)}.json"
+        try:
+            entry = _json.loads(f.read_text(encoding="utf-8"))
+            claim = f.with_suffix(".fallback")
+            f.rename(claim)
+            return str(entry.get("text") or ""), str(entry.get("thread_id") or ""), str(claim)
+        except (OSError, ValueError):
+            pass  # not in the file store - check in-process below
+    entry = _PENDING_OUTBOUND.pop(call_id, None)
+    if entry is None:
+        return None
+    text, thread_id, _exp = entry
+    return str(text), str(thread_id), ""
+
+
+# A worker can classify an INSTANT failure (busy/declined/Graph error) and POST
+# the outcome before the agent's place-call HTTP response has even been parsed —
+# i.e. before ``_pending_set`` ran. Wait briefly for the record to appear so the
+# accurate outcome is not lost to that race (round 12).
+_EARLY_OUTCOME_GRACE_S = 5.0
+
+
+async def deliver_outcome(
+    call_id: str, outcome: str, *, grace_s: float = _EARLY_OUTCOME_GRACE_S
+) -> dict:
+    """Act on a worker-reported call outcome. Idempotent: a repeated or
+    unknown callId reports ``ignored``. Returns a small JSON-safe dict."""
+    import asyncio as _asyncio
+
+    from .hermes_api import send_teams_message
+
+    from pathlib import Path as _Path
+
+    outcome = (outcome or "").strip().lower()
+    if outcome == "answered":
+        # The WS session delivers the message; the pending entry is popped at
+        # session.start. Nothing to do here.
+        return {"ok": True, "ignored": True}
+    claimed = claim_pending(call_id)
+    deadline = time.monotonic() + max(0.0, grace_s)
+    while claimed is None and time.monotonic() < deadline:
+        await _asyncio.sleep(0.25)  # close the outcome-before-pending race
+        claimed = claim_pending(call_id)
+    if claimed is None:
+        return {"ok": True, "ignored": True}
+    text, thread_id, claim_path = claimed
+    claim = _Path(claim_path) if claim_path else None  # None = in-process claim
+    if not thread_id:
+        if claim is not None:
+            claim.unlink(missing_ok=True)  # nothing to deliver to — expire
+        logger.info("[teams_call] outcome %s for %s: no chat fallback target", outcome, call_id)
+        return {"ok": True, "delivered": False}
+    lead = _OUTCOME_WORDING.get(outcome, _OUTCOME_WORDING["failed"])
+    try:
+        result = await send_teams_message(thread_id, f"\U0001F4DE {lead} Here's what I had: {text}")
+    except Exception as exc:  # noqa: BLE001 — a raising sender must not strand the claim
+        result = {"error": f"{type(exc).__name__}: {exc}"}
+    try:
+        if result.get("success"):
+            if claim is not None:
+                claim.unlink(missing_ok=True)
+            logger.info("[teams_call] outcome %s: chat fallback delivered to %s", outcome, thread_id)
+            return {"ok": True, "delivered": True}
+        if claim is not None and claim.exists():
+            claim.rename(claim.with_suffix(".json"))  # reaper retries later
+        logger.warning(
+            "[teams_call] outcome %s: chat fallback failed (kept for retry): %s",
+            outcome, result.get("error"),
+        )
+    except OSError:
+        pass
+    return {"ok": True, "delivered": False}
 
 
 async def deliver_stale_pending() -> int:

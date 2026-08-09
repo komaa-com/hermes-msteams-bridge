@@ -11,7 +11,7 @@ default, and meaning. All values match the code in `config.py` and
 
 Values are resolved in **priority order**:
 
-1. The `plugins.entries.teams_call.config` block in **`config.yaml`**.
+1. The `plugins.entries.msteams_call.config` block in **`config.yaml`**.
 2. **Environment variables** (typically in `~/.hermes/.env`).
 3. Safe **defaults**.
 
@@ -22,7 +22,7 @@ config of its own. Secrets are never logged.
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
   entries:
     msteams_call:
       config:
@@ -37,8 +37,8 @@ plugins:
 ## StandIn Managed Bot (chat lane)
 
 Set these when StandIn provides the Teams bot (installed from the Teams Store) rather than you
-running your own Azure bot. The chat lane is off until `messages_secret` is set - there is no separate
-enable flag.
+running your own Azure bot. One `secret` covers calls and chat; per-lane `calling_secret`/`messages_secret` override it.
+There is no separate enable flag.
 
 | Setting | Env | Default | What it does |
 |---|---|---|---|
@@ -92,7 +92,7 @@ These have sensible fixed defaults and are not exposed as config keys today:
 
 ## Realtime settings (`RealtimeConfig`)
 
-These live under `plugins.entries.teams_call.config.realtime` (or the matching env
+These live under `plugins.entries.msteams_call.config.realtime` (or the matching env
 vars) and configure the OpenAI/Azure Realtime speech-to-speech engine. Only used by
 `--handler realtime`.
 

@@ -246,3 +246,34 @@ The server routes each inbound frame to a `CallSessionHandler.on_*` callback:
 
 Handlers drive audio and avatar cues back via `CallSession.send_*` helpers, which
 serialize the outbound builders above.
+
+## Call-outcome POST (StandIn → plugin, HTTP)
+
+Alongside the WebSocket, the worker reports the **real terminal state of a
+placed call** with a signed HTTP POST - so a "call me back" whose callee never
+answers gets its chat fallback **immediately and with accurate wording**,
+instead of waiting for the plugin's 180-second stale timer (which remains as
+the safety net when this signal is absent).
+
+```
+POST {path}/outcome/{callId}
+X-StandIn-Timestamp: <ms epoch>
+X-StandIn-Signature: HMAC-SHA256(shared_secret, "{ts}.{callId}")
+
+{"outcome": "no-answer"}
+```
+
+- **Path**: under the stream prefix (default
+  `/voice/msteams/stream/outcome/{callId}`), because tunnels forward only that
+  prefix. The `callId` is the one returned when the call was placed.
+- **Auth**: the same HMAC contract as the WebSocket upgrade, including the
+  single-use replay guard - a retry must re-sign with a fresh timestamp.
+- **Body**: `outcome` is one of `answered`, `no-answer`, `declined`, `busy`,
+  `failed` (unknown values are treated as `failed`). `answered` is a no-op:
+  the WebSocket session delivers the spoken message.
+- **Responses**: `200` with `{"ok": true, "delivered": bool}` or
+  `{"ok": true, "ignored": true}` (unknown or already-handled callId -
+  idempotent); `401` on a bad signature or replay; `400` on a malformed body.
+- **Versioning**: additive. A plugin without this route returns `404` and the
+  worker falls back to sending nothing; the plugin's stale timer still covers
+  the no-answer case. An old worker that never POSTs outcomes loses nothing.

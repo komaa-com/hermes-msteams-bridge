@@ -70,7 +70,7 @@ Entry-point plugins are **opt-in**. Add `msteams_call` to `plugins.enabled` in
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
 ```
 
 :::caution[Pip plugins are enabled in config.yaml only]
@@ -88,7 +88,7 @@ hermes plugins list
 Then check the resolved config + readiness:
 
 ```bash
-hermes teams-call status
+hermes msteams-call status
 ```
 
 ## 3. Configure the shared secret + provider
@@ -101,7 +101,7 @@ referenced with `${VAR}`.
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
   entries:
     msteams_call:
       config:

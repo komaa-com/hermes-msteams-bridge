@@ -101,9 +101,10 @@ def parse_inbound(body: str) -> InboundChat:
     for key in ("tenantId", "conversationId", "activityId"):
         if not isinstance(raw.get(key), str) or not raw[key]:
             raise ValueError(f"{key} is required")
-    # Additive changes keep schemaVersion; a BREAKING change bumps it, and the contract says both
-    # sides ship before it is emitted. Processing a higher version as if it were v1 would apply v1
-    # semantics to a payload that no longer means the same thing - refuse instead, loudly.
+    # schemaVersion is a MAJOR version: additive/minor evolution does NOT bump it (the schema says
+    # receivers must ignore unknown fields, which is exactly how minors arrive), so an integer above
+    # ours means incompatible semantics and is refused rather than misread as v1. A missing or
+    # non-integer value is treated as v1 - the field only became mandatory after v1 shipped.
     version = raw.get("schemaVersion", SCHEMA_VERSION)
     if isinstance(version, int) and version > SCHEMA_VERSION:
         raise ValueError(

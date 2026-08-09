@@ -175,6 +175,12 @@ class BridgeServer:
         app = web.Application()
         route = f"{self.config.path.rstrip('/')}/{{call_id}}"
         app.router.add_get(route, self._handle_ws)
+        # Call-outcome wire: the worker POSTs the real terminal state of a
+        # placed call. Lives UNDER the stream path prefix because tunnels
+        # (e.g. the funnel) forward only that prefix to this port.
+        app.router.add_post(
+            f"{self.config.path.rstrip('/')}/outcome/{{call_id}}", self._handle_outcome
+        )
         app.router.add_get("/health", self._handle_health)
 
         self._runner = web.AppRunner(app)
@@ -204,6 +210,45 @@ class BridgeServer:
 
     async def _handle_health(self, _request: web.Request) -> web.Response:
         return web.Response(text="ok")
+
+    async def _handle_outcome(self, request: web.Request) -> web.Response:
+        """Worker-reported call outcome (answered / declined / no-answer /
+        busy / failed). Same HMAC contract as the WS upgrade — signature over
+        ``"{ts}.{callId}"`` with the shared replay guard (a worker retry
+        re-signs with a fresh timestamp). Unanswered outcomes trigger the
+        immediate chat fallback; unknown or repeated callIds are idempotent."""
+        call_id = request.match_info.get("call_id", "").strip()
+        if not call_id:
+            return web.Response(status=400, text="missing callId")
+        ok, reason = hmac_auth.verify_upgrade(
+            secret=self.config.shared_secret,
+            call_id=call_id,
+            timestamp_header=request.headers.get(HEADER_TIMESTAMP)
+            or request.headers.get(LEGACY_HEADER_TIMESTAMP),
+            signature_header=request.headers.get(HEADER_SIGNATURE)
+            or request.headers.get(LEGACY_HEADER_SIGNATURE),
+            window_ms=self.config.hmac_window_ms,
+            replay_guard=self._replay,
+        )
+        if not ok:
+            logger.warning("[teams_call] outcome rejected call=%s: %s", call_id, reason)
+            return web.Response(status=401, text="unauthorized")
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeDecodeError):
+            return web.Response(status=400, text="malformed JSON body")
+        if not isinstance(body, dict):
+            # Valid JSON that is not an object ([], "busy", 1) is still a
+            # malformed request, not a 500 (round 12).
+            return web.Response(status=400, text="body must be a JSON object")
+        outcome = str(body.get("outcome") or "").strip().lower()
+        if not outcome:
+            return web.Response(status=400, text="missing outcome")
+        from .call_session_base import deliver_outcome
+
+        logger.info("[teams_call] AUDIT call outcome: call=%s outcome=%s", call_id, outcome)
+        result = await deliver_outcome(call_id, outcome)
+        return web.json_response(result)
 
     async def _handle_ws(self, request: web.Request) -> web.StreamResponse:
         call_id = request.match_info.get("call_id", "").strip()

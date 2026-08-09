@@ -105,7 +105,12 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
                     else False
                 ),
             },
-            "plugin_enabled": "teams_call" in enabled if isinstance(enabled, list) else False,
+            # The only published entry point is msteams_call - checking the retired name reported
+            # plugin_enabled:false for every VALID activation, i.e. the status tool told healthy
+            # deployments they were misconfigured.
+            "plugin_enabled": (
+                any(k in enabled for k in ("msteams_call", "teams_call")) if isinstance(enabled, list) else False
+            ),
             "platform_enabled": bool(plat.get("enabled")) if isinstance(plat, dict) else False,
             "deps_available": deps,
             "hermes": hermes_version_note(),

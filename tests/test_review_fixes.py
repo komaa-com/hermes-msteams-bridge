@@ -53,7 +53,7 @@ def test_pending_entry_expires():
     from hermes_msteams_bridge import call_session_base as csb
 
     csb._PENDING_OUTBOUND.clear()
-    csb._PENDING_OUTBOUND["old"] = ("stale", time.monotonic() - 1.0)  # already expired
+    csb._PENDING_OUTBOUND["old"] = ("stale", "", time.monotonic() - 1.0)  # already expired
     assert csb._pending_pop("old") is None
     assert "old" not in csb._PENDING_OUTBOUND  # pruned
 
