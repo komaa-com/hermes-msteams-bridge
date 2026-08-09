@@ -1,0 +1,208 @@
+# =============================================================================
+# StandIn MANAGED chat relay protocol - SINGLE SOURCE OF TRUTH
+# =============================================================================
+# Design: docs/experimental/MANAGED-BOT-TIER.md section 4.3 (build step 4).
+#
+# WHY THIS EXISTS AND WHY IT IS NOT THE VOICE PROTOCOL (protocol/schema.yaml):
+#   Voice is one WebSocket per live call between the media worker and the agent.
+#   Chat is request/response HTTP between the managed GATEWAY and the agent, and
+#   it exists only for the managed tier. On the BYO path Teams talks to the
+#   customer's own bot and the caller simply reverse-proxies raw Bot Framework
+#   activities to the agent (Program.cs YARP) - no normalized protocol at all.
+#   Managed cannot do that: the Bot Framework credential is Komaa's and must
+#   never leave the gateway (D5), so the gateway terminates Bot Framework and
+#   speaks THIS protocol to the agent instead.
+#
+# TRANSPORT
+#   gateway -> agent   POST {binding.managedChatUrl}         body: InboundMessage
+#   agent  -> gateway  POST {gateway}/api/chat/reply         body: OutboundMessage
+#   Both directions are authenticated with the bridge HMAC (see AUTH below) and
+#   carry Content-Type: application/json; charset=utf-8.
+#
+# AUTH (identical construction to the voice/HMAC contract already in the tree:
+#   CallsController, OutboundCallController, @standin/bridge-hmac)
+#   X-StandIn-Timestamp   unix epoch MILLISECONDS
+#   X-StandIn-Signature   lowercase hex HMAC-SHA256(secret, "{timestampMs}.{rawBody}")
+#   The secret is the binding's CHAT key - a separate, domain-derived key from
+#   the voice key, so one surface's key can never sign for the other (section 9).
+#   Receivers enforce a +/- 5 minute replay window and compare in constant time.
+#
+# EVOLUTION
+#   Additive only. Unknown fields MUST be ignored; unknown enum values MUST NOT
+#   be rejected (openEnum). schemaVersion is bumped only for a breaking change,
+#   which requires both sides to ship before it is emitted.
+#
+# CONSUMERS (D6: published here, drift-checked in the consumer repos)
+#   - C#     standin-teams-store-bot  src/StandIn.TeamsGateway/Protocol/ChatProtocol.cs
+#   - TS     openclaw-msteams-bridge  (managed chat mode, build step 5)
+#   - Python hermes-msteams-bridge    (managed chat mode, build step 5)
+
+protocol:
+  name: standin-managed-chat
+  version: 1
+  doc: "Normalized chat relay between the StandIn managed gateway and a customer's OpenClaw/Hermes agent. The gateway owns Bot Framework auth and all outbound Teams sends; the agent never sees a bot credential."
+
+constants:
+  - name: SCHEMA_VERSION
+    value: 1
+    doc: "Value every message carries in schemaVersion. Receivers accept any version they know and ignore unknown fields; they MUST NOT hard-fail on a higher minor shape."
+  - name: REPLAY_WINDOW_MS
+    value: 300000
+    doc: "Accepted clock skew for the HMAC timestamp, both directions (+/- 5 minutes). Matches CallsController."
+
+enums:
+  ChatScope:
+    open: true
+    values: [personal, groupChat, channel]
+    doc: "Where the conversation lives. 'personal' is the 1:1 chat with the bot; 'groupChat' includes meeting chats; 'channel' is a STANDARD team channel (shared/private channels are out of scope, D9). Open set: treat unknown as groupChat and relay normally."
+  AttachmentKind:
+    open: true
+    values: [image, file]
+    doc: "'image' is an inline image (v1 supported). 'file' is a real file attachment: personal-chat files are v1 (supportsFiles true), channel/group files are NOT relayed (D5) and arrive with relayable=false."
+  ReplyKind:
+    open: true
+    values: [message, typing, error]
+    doc: "'message' is normal content; 'typing' shows the Teams typing indicator and carries no text; 'error' renders the agent-unreachable/agent-error styling. Unknown kinds are treated as 'message'."
+
+types:
+  Sender:
+    doc: "Who sent the inbound message. The gateway resolves this from the authenticated Bot Framework activity, so the agent may trust it without further checks."
+    fields:
+      - name: aadObjectId
+        type: string
+        optional: true
+        nullable: true
+        doc: "AAD object id of the sender in the bound tenant. Absent for anonymous/unknown identities; never fabricate one."
+      - name: displayName
+        type: string
+        optional: true
+        nullable: true
+        doc: "Human-readable name as Teams reports it."
+      - name: isGuest
+        type: bool
+        default: false
+        doc: "True when the sender is a B2B guest in the bound tenant. Guests relay like members (4.2) - the AGENT decides its own policy. Note guests are NOT the cross-tenant class D9 excludes: they live in the bound tenant's directory."
+      - name: isLinkedOwner
+        type: bool
+        default: false
+        doc: "True when this sender is linked (ManagedPrincipalLink) to the StandIn account that owns the binding. The gateway uses this for expensive-action authorization (4.6); agents may use it for their own permissioning."
+
+  Attachment:
+    doc: "An inbound attachment, relayed BY REFERENCE - the gateway downloads the Teams content with its bot credential and re-exposes it on a short-lived signed URL, so the agent never needs a Teams token."
+    fields:
+      - name: kind
+        type: string
+        enum: AttachmentKind
+        doc: "image | file (see AttachmentKind)."
+      - name: name
+        type: string
+        optional: true
+        nullable: true
+        doc: "Original filename as Teams reported it, when present."
+      - name: contentType
+        type: string
+        optional: true
+        nullable: true
+        doc: "MIME type, when Teams reported one."
+      - name: sizeBytes
+        type: long
+        optional: true
+        doc: "Size in bytes when known. The gateway enforces its own cap BEFORE relaying; an oversize attachment arrives with relayable=false instead of a url."
+      - name: url
+        type: string
+        optional: true
+        nullable: true
+        doc: "Gateway-signed, short-lived fetch URL. Absent when relayable is false. Agents must fetch within expiresAt and must not persist the URL itself."
+      - name: expiresAt
+        type: string
+        optional: true
+        nullable: true
+        doc: "RFC3339 UTC instant after which url stops working."
+      - name: relayable
+        type: bool
+        default: true
+        doc: "False when the gateway deliberately did not relay the content (too large, unsupported kind, or a channel/group file). The agent should tell the user rather than silently ignoring the attachment."
+
+  InboundMessage:
+    doc: "gateway -> agent. One user message in a bound tenant's conversation. The gateway has already authenticated Bot Framework, resolved the tenant to a binding, and decided this message should be relayed (reserved commands 4.6 are handled by the gateway and never arrive here)."
+    fields:
+      - name: schemaVersion
+        type: int
+        doc: "SCHEMA_VERSION at the time of sending."
+      - name: tenantId
+        type: string
+        doc: "The AUTHENTICATED Microsoft tenant id of the conversation. Routing key of the whole managed tier - the agent may trust it; it is never taken from user input."
+      - name: bindingId
+        type: string
+        doc: "The ManagedTenantBinding this conversation resolved to. Stable across messages for a tenant; useful for the agent's own per-customer state."
+      - name: conversationId
+        type: string
+        doc: "Stable Teams conversation id. The agent MUST echo it back on every reply so the gateway can address the right chat."
+      - name: activityId
+        type: string
+        doc: "Id of the originating Teams activity. Idempotency key: a redelivery repeats this value, so agents must not double-process it. Also the replyToId a threaded reply targets."
+      - name: scope
+        type: string
+        enum: ChatScope
+        doc: "personal | groupChat | channel."
+      - name: sender
+        type: object:Sender
+        doc: "Authenticated sender identity."
+      - name: text
+        type: string
+        default: ""
+        doc: "Message text as markdown, with the bot @mention already STRIPPED (in group/channel scope the gateway only relays mentioned messages, 4.6). May be empty when the message carried only attachments."
+      - name: mentions
+        type: array:string
+        optional: true
+        doc: "Display names mentioned in the message other than the bot, in order of appearance."
+      - name: attachments
+        type: array:Attachment
+        optional: true
+        doc: "Inbound attachments; see Attachment. Absent or empty when there are none."
+      - name: locale
+        type: string
+        optional: true
+        nullable: true
+        doc: "Teams client locale of the sender (e.g. 'en-GB'), when reported. Useful for the multilingual answer requirement."
+      - name: timestamp
+        type: string
+        doc: "RFC3339 UTC instant the activity was received by the gateway."
+
+  OutboundMessage:
+    doc: "agent -> gateway. A reply, a typing indicator, or an error to render. The gateway performs the actual Teams send with the Komaa bot credential; the agent never holds one."
+    fields:
+      - name: schemaVersion
+        type: int
+        doc: "SCHEMA_VERSION at the time of sending."
+      - name: tenantId
+        type: string
+        doc: "MUST equal the tenantId of the inbound message being answered. The gateway REJECTS a mismatch (cross-tenant leak guard, 3.3/4.9) - this is the load-bearing check of the whole relay."
+      - name: conversationId
+        type: string
+        doc: "The conversation to send into; echo the inbound value."
+      - name: replyToId
+        type: string
+        optional: true
+        nullable: true
+        doc: "Inbound activityId to thread this reply under. Omit for a standalone message in the conversation."
+      - name: kind
+        type: string
+        enum: ReplyKind
+        default: message
+        doc: "message | typing | error."
+      - name: text
+        type: string
+        optional: true
+        nullable: true
+        doc: "Markdown to send. Required for kind=message and kind=error; ignored for kind=typing. Streaming is NOT v1 (D5): buffer and send whole messages."
+      - name: card
+        type: object
+        optional: true
+        nullable: true
+        doc: "An Adaptive Card payload to send instead of/alongside text. The gateway VALIDATES it against an allowlist (schema version, no raw HTML, permitted action types with openUrl restricted to validDomains, 4.7) and rejects the message rather than forwarding an unvetted card."
+      - name: idempotencyKey
+        type: string
+        optional: true
+        nullable: true
+        doc: "Agent-chosen key making a retried send safe. The gateway drops a duplicate (tenantId, conversationId, idempotencyKey) within the outbox retention window."
