@@ -28,12 +28,11 @@ def plugin_env(name: str, default: str = "") -> str:
 
 # Default WebSocket path the worker connects to: ``/voice/msteams/stream/{callId}``.
 # Canonical agent paths, named for the two Teams planes and prefixed with the platform so the pair
-# reads as one convention: wss://host/msteams/calling and https://host/msteams/messages. The previous
-# spellings are served as ALIASES (see LEGACY_*), so an agent deployed before the rename keeps working.
+# reads as one convention: wss://host/msteams/calling and https://host/msteams/messages.
+# These are the ONLY paths served. If you need a different one, set it in config - do not rely on a
+# path this bridge used to answer.
 DEFAULT_PATH = "/msteams/calling"
-LEGACY_PATHS = ("/voice/msteams/stream",)
 DEFAULT_MESSAGES_PATH = "/msteams/messages"
-LEGACY_MESSAGES_PATHS = ("/managed/chat",)
 
 # HMAC upgrade header names — MUST match the companion worker byte-for-byte (it
 # sends these on the WS upgrade and reads them on the outbound-call endpoint).

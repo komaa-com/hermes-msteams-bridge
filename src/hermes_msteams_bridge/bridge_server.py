@@ -175,15 +175,6 @@ class BridgeServer:
         app = web.Application()
         route = f"{self.config.path.rstrip('/')}/{{call_id}}"
         app.router.add_get(route, self._handle_ws)
-        # Pre-rename alias (/voice/msteams/stream): a StandIn identity provisioned before the
-        # /msteams/calling convention still dials the old path, and an upgrade must not black-hole
-        # its calls. Registered only when it differs from the configured path.
-        from .config import LEGACY_PATHS
-
-        for legacy in LEGACY_PATHS:
-            legacy_route = f"{legacy.rstrip('/')}/{{call_id}}"
-            if legacy_route != route:
-                app.router.add_get(legacy_route, self._handle_ws)
         app.router.add_get("/health", self._handle_health)
 
         self._runner = web.AppRunner(app)
