@@ -259,7 +259,15 @@ class ManagedChatServer:
             if prev is not None:
                 try:
                     await prev
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001 - a failed turn must not dam the chain
+                except asyncio.CancelledError:
+                    # Re-review P2: distinguish PREV being cancelled from THIS task being cancelled while
+                    # parked on prev. Swallowing our own cancellation here would let a queued turn run its
+                    # full agent turn (typing + respond + reply) DURING shutdown. asyncio delivers our own
+                    # cancellation as CancelledError at this await - re-raise when it is ours.
+                    current = asyncio.current_task()
+                    if current is not None and current.cancelling() > 0:
+                        raise
+                except Exception:  # noqa: BLE001 - a failed turn must not dam the chain
                     pass
             await self._process(message)
 
@@ -274,10 +282,15 @@ class ManagedChatServer:
 
         task.add_done_callback(_cleanup)
 
+    #: Re-review P2: serialization means a HUNG turn wedges its whole conversation forever (every later
+    #: message chains behind it). Every turn is bounded; a timed-out turn fails like any error, the user
+    #: hears about it, and the chain moves on. Generous - agent turns legitimately run long.
+    TURN_TIMEOUT_S = 300.0
+
     async def _process(self, message: InboundChat) -> None:
         await self._post_reply(build_reply(message, "", "typing"))
         try:
-            text = await self._respond(message)
+            text = await asyncio.wait_for(self._respond(message), timeout=self.TURN_TIMEOUT_S)
             if text and text.strip():
                 await self._post_reply(build_reply(message, text))
         except asyncio.CancelledError:
