@@ -12,7 +12,7 @@ import base64
 import logging
 from pathlib import Path
 
-from . import meeting
+from . import managed_chat, meeting
 from .call_session_base import _pending_set
 from .outbound import OutboundError, place_call
 
@@ -48,10 +48,47 @@ class CallToolRunner:
                 return await self._call_me_back(str(args.get("message", "")))
             if name == "post_meeting_minutes":
                 return await meeting.post_minutes(h._consult, h._meeting, h._thread_id)
+            if name == "post_chat_message":
+                return await self._post_chat_message(str(args.get("text", "")))
         except Exception:  # noqa: BLE001 — a tool fault must not break the call
             logger.error("[teams_call] tool %s failed", name, exc_info=True)
             return "Sorry, that didn't work."
         return f"Unknown tool: {name}."
+
+    async def _post_chat_message(self, text: str) -> str:
+        """Post to the call's Teams chat through the gateway - the managed connection's own messages hop.
+
+        The minutes tool posts via the HOST's Teams platform, which needs the customer's own Bot
+        Framework credentials. A managed customer has none, so on that tier "post this to the chat"
+        could only ever fail. The plugin already holds both sockets; this uses the one meant for it.
+        """
+        h = self._h
+        text = text.strip()
+        if not text:
+            return "There was nothing to post."
+        cfg = getattr(h, "_bridge", None)
+        tenant_id = getattr(h, "_tenant_id", None)
+        chat_secret = getattr(cfg, "managed_chat_secret", "") if cfg else ""
+        reply_url = getattr(cfg, "managed_chat_gateway_reply_url", "") if cfg else ""
+        # A BYO/free deployment has no gateway to post through: the tenant is absent because the caller
+        # only asserts it for managed calls. Say so plainly instead of failing silently mid-sentence.
+        if not (tenant_id and chat_secret and reply_url):
+            return "I can only post to the chat on a StandIn managed connection - this call is not on one."
+        ok = await managed_chat.post_message(
+            chat_secret=chat_secret,
+            gateway_reply_url=reply_url,
+            tenant_id=tenant_id,
+            conversation_id=h._thread_id,
+            text=text,
+            # Scoped to the call AND the content, so a retried tool call does not double-post while two
+            # genuinely different posts in one call both go out.
+            idempotency_key=f"call-{h._session.call_id if h._session else 'x'}-{abs(hash(text)) & 0xffffffff:08x}",
+        )
+        return (
+            "I've posted that to the Teams chat."
+            if ok
+            else "I couldn't post to the Teams chat just now."
+        )
 
     async def _look_at_screen(self, question: str, source: str | None, scope: str = "live") -> str:
         h = self._h

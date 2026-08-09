@@ -76,6 +76,9 @@ class SessionStart:
     caller: CallerInfo
     recording_status: Optional[str] = None  # "active" | "inactive" | "unknown"
     direction: Optional[str] = None  # "inbound" | "outbound"
+    # MANAGED only: the Microsoft tenant this call belongs to, taken from the signed route grant.
+    # Absent on BYO/free, where the plugin serves one tenant and has no gateway to post back through.
+    tenant_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -178,6 +181,7 @@ def decode(raw: str | bytes) -> InboundMessage:
                 caller=CallerInfo.from_dict(obj.get("caller")),
                 recording_status=_clean(obj.get("recordingStatus")),
                 direction=_clean(obj.get("direction")),
+                tenant_id=_clean(obj.get("tenantId")),
             )
         if mtype == TYPE_SESSION_END:
             return SessionEnd(type=mtype, reason=str(obj.get("reason") or ""))

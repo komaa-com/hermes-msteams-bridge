@@ -106,6 +106,7 @@ def test_default_tools_present_and_well_formed():
         "set_call_language",
         "call_me_back",
         "post_meeting_minutes",
+        "post_chat_message",
     }
     for tool in realtime_tools.default_tools():
         assert tool["type"] == "function"

@@ -188,6 +188,64 @@ class ManagedChatConfig:
         return bool(self.chat_secret)
 
 
+async def post_message(
+    *,
+    chat_secret: str,
+    gateway_reply_url: str,
+    tenant_id: str,
+    conversation_id: str,
+    text: str,
+    idempotency_key: str | None = None,
+) -> bool:
+    """Post a message into a Teams conversation through the gateway, with no inbound message to reply to.
+
+    This is the SAME hop an ordinary chat reply takes - the gateway's /api/chat/reply, signed with this
+    binding's connection secret - just addressed explicitly instead of derived from something that arrived.
+    The agent never holds a Bot Framework credential; the gateway performs the Teams send.
+
+    It exists because in-call chat had no route at all on a managed connection. The minutes/summary path
+    posts through the HOST's Teams platform, which needs the customer's own bot credentials - a managed
+    customer has none, so "post this to the chat" during a call could only fail. The plugin already holds
+    both sockets; this uses the one built for exactly this direction.
+
+    Best-effort: returns False rather than raising, because a failed post must never break a live call.
+    """
+    import aiohttp
+
+    body = json.dumps(
+        {
+            "tenantId": tenant_id,
+            "conversationId": conversation_id,
+            "text": text,
+            "kind": "message",
+            **({"idempotencyKey": idempotency_key} if idempotency_key else {}),
+        },
+        separators=(",", ":"),
+    )
+    ts, sig = sign(chat_secret, body)
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                gateway_reply_url,
+                data=body.encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    HEADER_TIMESTAMP: ts,
+                    HEADER_SIGNATURE: sig,
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status < 400:
+                    return True
+                logger.warning("managed chat: in-call post -> HTTP %s", resp.status)
+                return False
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - a failed post must not break the call
+        logger.warning("managed chat: in-call post failed", exc_info=True)
+        return False
+
+
 class ManagedChatServer:
     """The endpoint + reply client. ``respond`` runs one Hermes agent turn for an
     inbound message and returns the reply text (wired to ``AgentConsult`` by the

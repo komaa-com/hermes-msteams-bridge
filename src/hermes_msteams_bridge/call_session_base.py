@@ -119,6 +119,7 @@ class BaseTeamsCallHandler(CallSessionHandler):
         self._caller: protocol.CallerInfo | None = None
         self._thread_id = ""
         self._outbound = False
+        self._tenant_id: str | None = None
         self._greeted = False
         self._pending_greeting: str | None = None
         self._meeting = MeetingTranscript()
@@ -174,6 +175,9 @@ class BaseTeamsCallHandler(CallSessionHandler):
         self._session = session
         self._caller = msg.caller
         self._thread_id = msg.thread_id
+        # MANAGED: the tenant this call belongs to, asserted by the control plane in the signed grant.
+        # It is what lets an in-call chat post be addressed at all; absent on BYO/free.
+        self._tenant_id = msg.tenant_id
         self._outbound = (msg.direction or "").lower() == "outbound"
         if self._outbound:  # delivery leg of a call-back
             self._pending_greeting = _pending_pop(msg.call_id)

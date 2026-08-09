@@ -237,6 +237,28 @@ POST_MEETING_MINUTES = {
 }
 
 
+POST_CHAT_MESSAGE = {
+    "type": "function",
+    "name": "post_chat_message",
+    "description": (
+        "Post a text message into the Teams chat for THIS call, while the call is still going. "
+        "Use when the caller asks you to 'send that to the chat', 'post it', 'write it down', or "
+        "'message me the link' - anything they want to keep after the call ends. The message appears "
+        "from StandIn in the same Teams conversation. Say what you posted; do not read long text aloud."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "The message to post. Markdown is supported.",
+            }
+        },
+        "required": ["text"],
+    },
+}
+
+
 def default_tools() -> list[dict]:
     return [
         HERMES_AGENT_CONSULT,
@@ -249,4 +271,5 @@ def default_tools() -> list[dict]:
         SET_CALL_LANGUAGE,
         CALL_ME_BACK,
         POST_MEETING_MINUTES,
+        POST_CHAT_MESSAGE,
     ]
