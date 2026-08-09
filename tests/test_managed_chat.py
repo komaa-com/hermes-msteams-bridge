@@ -280,3 +280,47 @@ class TestServerEndToEnd:
         finally:
             await server.stop()
             await gw.cleanup()
+
+
+@pytest.mark.asyncio
+class TestOrderingSerialization(TestServerEndToEnd):
+    async def test_turns_in_one_conversation_run_sequentially(self):
+        # Review P0-4: the schema promises per-conversation ordering - replies must not overtake.
+        events: list[str] = []
+        gates: dict[str, asyncio.Event] = {}
+
+        async def respond(m):
+            events.append(f"start:{m.activity_id}")
+            gate = gates.setdefault(m.activity_id, asyncio.Event())
+            await gate.wait()
+            events.append(f"end:{m.activity_id}")
+            return ""
+
+        server, gw, port, _replies, _seen, _calls = await self._start(respond)
+        try:
+            def msg(conv, aid):
+                return json.dumps({
+                    "tenantId": "t1", "conversationId": conv, "activityId": aid,
+                    "scope": "personal", "sender": {}, "text": "x",
+                })
+
+            assert await self._post(port, msg("c1", "a1")) == 200
+            assert await self._post(port, msg("c1", "a2")) == 200
+            assert await self._post(port, msg("c2", "b1")) == 200
+            await asyncio.sleep(0.1)
+
+            # a2 must NOT start while a1 holds its gate; b1 (another conversation) runs concurrently.
+            assert "start:a1" in events
+            assert "start:b1" in events
+            assert "start:a2" not in events
+
+            gates["a1"].set()
+            await asyncio.sleep(0.1)
+            assert "end:a1" in events
+            assert "start:a2" in events
+            for g in gates.values():
+                g.set()
+            await asyncio.sleep(0.05)
+        finally:
+            await server.stop()
+            await gw.cleanup()

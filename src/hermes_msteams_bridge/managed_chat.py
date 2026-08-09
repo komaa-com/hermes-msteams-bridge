@@ -195,6 +195,10 @@ class ManagedChatServer:
         self._runner: Any = None
         self._session: Any = None
         self._tasks: set[asyncio.Task] = set()
+        # Per-conversation processing chains (review P0-4): the schema promises per-conversation
+        # ORDERING, and independent tasks per message let replies overtake each other. Each
+        # conversation's turns run strictly sequentially; different conversations stay concurrent.
+        self._chains: dict[str, asyncio.Task] = {}
 
     async def start(self) -> None:
         import aiohttp
@@ -240,13 +244,35 @@ class ManagedChatServer:
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
 
-        # ACK first; the gateway's durable relay owns retry/ordering. A redelivered
-        # activity ACKs and does nothing - the first delivery's turn is running.
+        # ACK first; the gateway's durable relay owns retry between US and IT. A redelivered
+        # activity ACKs and does nothing - the first delivery's turn is running (or queued).
         if self._seen.mark_first(message.activity_id):
-            task = asyncio.get_running_loop().create_task(self._process(message))
-            self._tasks.add(task)
-            task.add_done_callback(self._tasks.discard)
+            self._enqueue_turn(message)
         return web.json_response({"ok": True})
+
+    def _enqueue_turn(self, message: InboundChat) -> None:
+        # Chain the turn behind the conversation's previous one (ordering, review P0-4).
+        key = f"{message.tenant_id}:{message.conversation_id}"
+        prev = self._chains.get(key)
+
+        async def _run() -> None:
+            if prev is not None:
+                try:
+                    await prev
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001 - a failed turn must not dam the chain
+                    pass
+            await self._process(message)
+
+        task = asyncio.get_running_loop().create_task(_run())
+        self._chains[key] = task
+        self._tasks.add(task)
+
+        def _cleanup(t: asyncio.Task) -> None:
+            self._tasks.discard(t)
+            if self._chains.get(key) is t:
+                del self._chains[key]
+
+        task.add_done_callback(_cleanup)
 
     async def _process(self, message: InboundChat) -> None:
         await self._post_reply(build_reply(message, "", "typing"))
