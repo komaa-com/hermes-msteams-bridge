@@ -24,9 +24,13 @@ StandIn media bridge ──HMAC WebSocket──▶ teams_call (this package)
 ```
 
 The plugin is the **WebSocket server** (binds `127.0.0.1:8443` by default); StandIn
-is the **client** that dials in. Chat-plane features (messages, message actions,
-recap posting) are handled by the separate `plugins/platforms/teams` adapter, not
-here - this package is the *media/voice* half.
+is the **client** that dials in.
+
+Chat depends on the connection mode. In **StandIn Managed Bot** mode this package
+also hosts the chat lane itself (`managed_chat.py`, HTTP on `messages_port`), so one
+process carries both planes of one binding. In **bring-your-own-Azure-bot** mode the
+chat plane is the separate `plugins/platforms/teams` adapter and this package is the
+*media/voice* half only.
 
 ## Module map
 
@@ -49,7 +53,7 @@ here - this package is the *media/voice* half.
 | ElevenLabs TTS (timestamp alignment) | `elevenlabs_tts.py` |
 | Outbound "call me back" place-call | `outbound.py` |
 | Agent-facing status tool | `tools.py` |
-| CLI (`hermes teams-call {status,serve}`) | `cli.py` |
+| CLI (`hermes msteams-call {status,serve}`) | `cli.py` |
 | Plugin registration | `__init__.py` |
 
 ## Call handlers
@@ -92,7 +96,7 @@ wiki page.
 ## Configuration
 
 `TeamsVoiceConfig` (`config.py`) resolves values in priority order: the
-`plugins.entries.teams_call.config` block in `config.yaml`, then environment
+`plugins.entries.msteams_call.config` block in `config.yaml`, then environment
 variables, then safe defaults. `RealtimeConfig` (`realtime/openai_client.py`)
 resolves the realtime provider (OpenAI or Azure) the same way. Secrets are never
 logged. Every key, env var, and default is documented on the
@@ -104,7 +108,7 @@ Example `config.yaml`:
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
   entries:
     teams_call:
       config:
@@ -145,8 +149,8 @@ unused). Pairing your own bot with StandIn is done in the StandIn dashboard - se
 ## Run
 
 ```bash
-hermes teams-call status      # show resolved config + readiness
-hermes teams-call serve --handler realtime   # run the bridge server (foreground)
+hermes msteams-call status      # show resolved config + readiness
+hermes msteams-call serve --handler realtime   # run the bridge server (foreground)
 # or standalone:
 python -m hermes_msteams_bridge.bridge_server
 ```

@@ -23,6 +23,7 @@ import time
 from . import hmac_auth, protocol
 from .config import (
     BYTES_PER_FRAME,
+    DEFAULT_PATH,
     HEADER_SIGNATURE,
     HEADER_TIMESTAMP,
     TeamsVoiceConfig,
@@ -39,7 +40,9 @@ class SyntheticCall:
     """One fake StandIn leg. Requires ``aiohttp`` (already a dependency)."""
 
     def __init__(self, host: str, port: int, secret: str, call_id: str) -> None:
-        self._url = f"ws://{host}:{port}/voice/msteams/stream/{call_id}"
+        # Uses the bridge's own configured path, so the smoke tool cannot drift from what the server
+        # actually serves - it hardcoded /voice/msteams/stream and only failed once the alias was gone.
+        self._url = f"ws://{host}:{port}{DEFAULT_PATH}/{call_id}"
         self._secret = secret
         self._call_id = call_id
         self._ws = None

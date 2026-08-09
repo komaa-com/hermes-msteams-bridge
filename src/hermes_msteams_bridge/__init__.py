@@ -77,7 +77,7 @@ def register(ctx) -> None:
     )
 
     ctx.register_cli_command(
-        name="teams-call",
+        name="msteams-call",
         help="Microsoft Teams voice/video (CVI) bridge (serve, status)",
         setup_fn=_register_cli,
         handler_fn=_teams_call_command,

@@ -51,6 +51,15 @@ def _port_active(host: str, port: int) -> bool:
         return False
 
 
+def _managed_chat_ok(cfg) -> bool:
+    """True when the managed chat lane is either not configured (fine - voice-only deployment) or
+    configured AND listening. Configured-but-silent is the failure this exists to surface."""
+    if not cfg.managed_chat_secret:
+        return True
+    host = "127.0.0.1" if cfg.managed_chat_host in ("0.0.0.0", "::") else cfg.managed_chat_host
+    return _port_active(host, cfg.managed_chat_port)
+
+
 def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
     """Status probe. Hermes dispatches ``handler(args, **kwargs)``, so the
     positional args dict must be accepted even though this tool takes none."""
@@ -70,14 +79,38 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
         {
             # Honest verdict (round 8): unconfigured or missing surfaces is
             # NOT ok — "ok": true used to be unconditional.
-            "ok": bool(cfg.configured and deps and boundaries_ok),
+            # Chat counts toward the verdict: a configured lane that is not listening is NOT ok,
+            # or the one tool built to answer "is this working?" answers yes while chat is dead.
+            "ok": bool(cfg.configured and deps and boundaries_ok and _managed_chat_ok(cfg)),
             "configured": cfg.configured,  # bool — never the secret itself
             "host": cfg.host,
             "port": cfg.port,
             "path": cfg.path,
             # Someone (bridge or a conflicting process) owns the configured port.
             "port_active": _port_active(cfg.host, cfg.port),
-            "plugin_enabled": "teams_call" in enabled if isinstance(enabled, list) else False,
+            # StandIn Managed Bot chat lane. Reported alongside voice because "is chat working?"
+            # was previously unanswerable from here - the status tool only knew about the voice
+            # socket, so a dead chat lane looked identical to a healthy one.
+            "managed_bot": {
+                "chat_configured": bool(cfg.managed_chat_secret),  # bool - never the secret
+                "chat_host": cfg.managed_chat_host,
+                "chat_port": cfg.managed_chat_port,
+                "chat_path": cfg.managed_chat_path,
+                "chat_port_active": (
+                    _port_active(
+                        "127.0.0.1" if cfg.managed_chat_host in ("0.0.0.0", "::") else cfg.managed_chat_host,
+                        cfg.managed_chat_port,
+                    )
+                    if cfg.managed_chat_secret
+                    else False
+                ),
+            },
+            # The only published entry point is msteams_call - checking the retired name reported
+            # plugin_enabled:false for every VALID activation, i.e. the status tool told healthy
+            # deployments they were misconfigured.
+            "plugin_enabled": (
+                any(k in enabled for k in ("msteams_call", "teams_call")) if isinstance(enabled, list) else False
+            ),
             "platform_enabled": bool(plat.get("enabled")) if isinstance(plat, dict) else False,
             "deps_available": deps,
             "hermes": hermes_version_note(),

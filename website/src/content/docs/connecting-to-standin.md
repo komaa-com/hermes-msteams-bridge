@@ -11,7 +11,7 @@ model, the three tiers, and how the shared secret works.
 ## The connection model
 
 - **The plugin is a local WebSocket server.** When you run
-  `hermes teams-call serve`, it binds `127.0.0.1:8443` by default and waits.
+  `hermes msteams-call serve`, it binds `127.0.0.1:8443` by default and waits.
 - **The StandIn media bridge is the client.** For each Teams call it opens **one
   WebSocket** to `/voice/msteams/stream/{callId}` on your server.
 - **Authentication is HMAC over a shared secret.** Both sides hold the same secret.
@@ -38,6 +38,27 @@ Because the shared secret rides this connection, the plugin binds **loopback** b
 default. Binding to a non-loopback host is possible but the plugin warns you,
 because it exposes the secret to that interface.
 :::
+
+## Connection modes
+
+**StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install StandIn from the
+Teams Store, connect this agent in the StandIn portal, and paste the one secret it gives you. No
+Azure bot registration, no App ID or client secret. Voice and chat are two lanes of the same
+connection - a WebSocket on `calling_port` and HTTP on `messages_port` - hosted by one process.
+
+```yaml
+plugins:
+  entries:
+    msteams_call:
+      config:
+        calling_secret:  ${MSTEAMS_CALL_CALLING_SECRET}    # calling lane
+        messages_secret: ${MSTEAMS_CALL_MESSAGES_SECRET}   # messages lane
+```
+
+One agent instance serves one connection; run a second instance for a second organization.
+
+**Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot
+resource. The tiers below describe this path.
 
 ## The three tiers
 

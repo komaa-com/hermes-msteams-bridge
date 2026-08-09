@@ -10,6 +10,8 @@ import time
 
 import pytest
 
+from hermes_msteams_bridge.config import DEFAULT_PATH
+
 import hermes_msteams_bridge.call_session_base as csb
 from hermes_msteams_bridge import hmac_auth
 from hermes_msteams_bridge.config import HEADER_SIGNATURE, HEADER_TIMESTAMP, TeamsVoiceConfig
@@ -131,7 +133,10 @@ def _run_server_scenario(scenario):
         await server.start()
         try:
             async with aiohttp.ClientSession() as http:
-                base = f"http://127.0.0.1:{port}/voice/msteams/stream/outcome"
+                # Derive from the server's CONFIGURED path, never a literal: this hardcoded
+                # /voice/msteams/stream and 404'd the moment the canonical path changed, which is
+                # the test failing to test the contract rather than the contract breaking.
+                base = f"http://127.0.0.1:{port}{DEFAULT_PATH}/outcome"
                 return await scenario(http, base)
         finally:
             await server.stop()

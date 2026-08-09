@@ -12,12 +12,43 @@ Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Ag
 packaged as a standalone, pip-installable plugin: install it *on top of* a normal
 Hermes install, no fork required.
 
-The plugin (name **`teams_call`**) hosts the HMAC-authenticated WebSocket bridge that
+The plugin (name **`msteams_call`**) hosts the HMAC-authenticated WebSocket bridge that
 the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
 bilingual EN/AR, and meeting recap/minutes (posted to the chat, with a local
 `.docx` artifact).
+
+
+### Two ways to connect to Teams
+
+**StandIn Managed Bot (recommended).** StandIn provides the Teams bot: install **StandIn** from the
+Teams Store, connect this agent in the StandIn portal, and paste one secret. No Azure bot
+registration, no App ID or client secret, no separate chat plane to run. Voice and chat are two lanes of
+the SAME StandIn connection - a WebSocket on the calling port and HTTP on the messages port - hosted
+by one process, whether that is `msteams-call serve` or the gateway-resident platform.
+
+```yaml
+plugins:
+  entries:
+    msteams_call:
+      config:
+        # ONE connection secret from the StandIn portal - covers calls AND chat.
+        secret: ${MSTEAMS_CALL_SECRET}
+```
+
+The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
+your agent over a private network (Tailscale, VPN, a reverse proxy), set `host` to that
+interface, or firewall the port - the HMAC keeps unauthenticated callers out, but an open port is
+still an open port.
+
+One agent instance serves **one** StandIn connection: the secret is a single value scoped to one
+tenant binding. Serving several tenants means several instances, each with its own secret. Never
+share one secret across tenants.
+
+**Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot resource,
+and the Teams *chat* plane is handled by Hermes's own `platforms/teams` adapter rather than here.
+Choose this when the bot must live entirely inside your tenant.
 
 ## Getting started
 
@@ -85,7 +116,7 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-msteams-brid
 
 ## Enable + run
 
-Entry-point plugins are **opt-in**: add `teams_call` to `plugins.enabled` in
+Entry-point plugins are **opt-in**: add `msteams_call` to `plugins.enabled` in
 **`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
 does **not** work for pip-installed plugins (it only sees bundled/user-dir plugins),
 so enable it in config:
@@ -93,13 +124,13 @@ so enable it in config:
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
 ```
 
-Then run the voice bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
+Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 
 ```bash
-hermes teams-call serve --handler realtime
+hermes msteams-call serve --handler realtime
 ```
 
 And, separately, the Teams chat plane + cron:
@@ -113,16 +144,16 @@ hermes gateway run
 Config lives in Hermes's own files (this package ships none). Non-secret settings go
 in **`config.yaml`**; secrets go in **`.env`** and are referenced with `${VAR}`.
 
-**`~/.hermes/config.yaml`**, under `plugins.entries.teams_call.config`:
+**`~/.hermes/config.yaml`**, under `plugins.entries.msteams_call.config`:
 
 ```yaml
 plugins:
   enabled:
-    - teams_call                          # entry-point plugins are opt-in
+    - msteams_call                          # entry-point plugins are opt-in
   entries:
-    teams_call:
+    msteams_call:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # MUST match the secret paired in StandIn
+        secret: ${MSTEAMS_CALL_SECRET}   # MUST match the secret StandIn gave you
         host: 127.0.0.1
         port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
@@ -154,7 +185,7 @@ plugins:
 > **Public OpenAI** instead of Azure: set `backend: openai`, `model: gpt-realtime`,
 > `api_key: ${OPENAI_API_KEY}`, and drop the `azure_*` keys.
 > **Streaming** (STT→agent→TTS) instead of realtime: omit the `realtime:` block and run
-> `hermes teams-call serve --handler streaming` (needs `ffmpeg` on PATH).
+> `hermes msteams-call serve --handler streaming` (needs `ffmpeg` on PATH).
 
 **`~/.hermes/.env`**, the secrets referenced above (plus Teams chat-plane creds if you
 also run `hermes gateway run`):
@@ -170,7 +201,7 @@ TEAMS_CLIENT_SECRET=<bot-app-secret>
 TEAMS_TENANT_ID=<azure-ad-tenant-id>
 ```
 
-`shared_secret` **must match** the secret paired in StandIn or the HMAC
+`secret` **must match** the secret StandIn gave you or the HMAC
 handshake fails. Full key reference (every option, defaults, env vars, streaming
 mode, the wire protocol): the
 [**Configuration Reference**](https://komaa-com.github.io/hermes-msteams-bridge/configuration-reference/)
@@ -200,12 +231,12 @@ package exposes:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_call = "hermes_msteams_bridge"
+msteams_call = "hermes_msteams_bridge"
 ```
 
 Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the
 `teams-call` CLI, the status tool, and the session hook. Entry-point plugins are
-opt-in, so `teams_call` must be in `plugins.enabled` (add it in `config.yaml`;
+opt-in, so `msteams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 `hermes plugins enable` does not see pip-installed plugins).
 
 ## Requirements
@@ -218,7 +249,7 @@ opt-in, so `teams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 
 This is the same code as the original in-tree plugin, repackaged for pip
 distribution so you don't have to fork Hermes. Install it on **vanilla** Hermes; don't
-also keep a bundled `teams_call` (same name → the entry-point would shadow it).
+also keep a bundled `msteams_call` (same name → the entry-point would shadow it).
 
 - **Voice/CVI** works fully on vanilla Hermes.
 - **Meeting minutes** post to the chat with the Word `.docx` attached as a

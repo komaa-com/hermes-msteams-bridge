@@ -27,7 +27,12 @@ def plugin_env(name: str, default: str = "") -> str:
 
 
 # Default WebSocket path the worker connects to: ``/voice/msteams/stream/{callId}``.
-DEFAULT_PATH = "/voice/msteams/stream"
+# Canonical agent paths, named for the two Teams planes and prefixed with the platform so the pair
+# reads as one convention: wss://host/msteams/calling and https://host/msteams/messages.
+# These are the ONLY paths served. If you need a different one, set it in config - do not rely on a
+# path this bridge used to answer.
+DEFAULT_PATH = "/msteams/calling"
+DEFAULT_MESSAGES_PATH = "/msteams/messages"
 
 # HMAC upgrade header names — MUST match the companion worker byte-for-byte (it
 # sends these on the WS upgrade and reads them on the outbound-call endpoint).
@@ -87,6 +92,15 @@ class TeamsVoiceConfig:
     session_scope: str = "per-call"
     # Group-call wake phrases (speak only when addressed).
     wake_phrases: tuple[str, ...] = ("assistant", "hermes")
+    # StandIn MANAGED chat lane. Part of THIS plugin's config (plugins.entries.teams_call.config
+    # -> managed_chat, env TEAMS_CALL_MANAGED_CHAT_*) rather than a separate config root: it is the
+    # same Teams integration as the voice lane, just the chat plane, and an operator should not have
+    # to learn a second namespace to turn it on. Empty secret = lane off, fail closed.
+    managed_chat_secret: str = ""
+    managed_chat_host: str = "0.0.0.0"
+    managed_chat_port: int = 8444
+    managed_chat_path: str = "/managed/chat"
+    managed_chat_gateway_reply_url: str = "https://teams.standin.komaa.com/api/chat/reply"
     # Post end-of-call meeting minutes to the Teams chat (opt-in).
     meeting_recap: bool = False
     # Root directory show_file may display from (containment). Empty =
@@ -147,17 +161,29 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     """
     extra = extra if extra is not None else plugin_config_block()
 
+    # ONE secret serves both lanes (owner decision 2026-08-09): the portal generates a single value
+    # per connection and the user pastes it once - `secret` / MSTEAMS_CALL_SECRET fills calling AND
+    # messages. Per-lane keys remain as OVERRIDES for split-key deployments. Deliberately a NEW key
+    # rather than falling back to shared_secret: that fallback would silently open the chat listener
+    # on every existing voice-only deployment at upgrade.
+    one_secret = (
+        str(extra.get("secret") or "").strip()
+        or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
+    )
     shared_secret = (
-        str(extra.get("shared_secret") or "").strip()
+        str(extra.get("calling_secret") or extra.get("shared_secret") or "").strip()
+        or plugin_env("MSTEAMS_CALL_CALLING_SECRET", "").strip()
         or plugin_env("TEAMS_CALL_SHARED_SECRET", "").strip()
+        or one_secret
     )
     host = (
         str(extra.get("host") or "").strip()
         or plugin_env("TEAMS_CALL_HOST", "").strip()
         or "127.0.0.1"
     )
+    # `calling_port` is the name (paired with `messages_port`); `port` stays accepted.
     port = _coerce_int(
-        extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
+        extra.get("calling_port") or extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
     )
     path = str(extra.get("path") or "").strip() or DEFAULT_PATH
     window = _coerce_int(
@@ -227,7 +253,97 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_CALL_ALLOWLIST_ALLOW_NAMES"),
         allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_CALL_ALLOW_REMOTE_WORKER"),
         allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_CALL_ALLOW_ALL"),
+        **_resolve_managed_chat(extra),
     )
+
+
+def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
+    """FLAT by owner decision (2026-08-09): the managed lane's host/ports/endpoint are plugin-level
+    settings, so they live at the plugin root next to their voice counterparts rather than in a
+    nested block:
+
+        teams_call:
+          config:
+            shared_secret: ${TEAMS_CALL_SHARED_SECRET}     # voice lane
+            chat_secret:   ${TEAMS_CALL_CHAT_SECRET}       # managed chat lane
+            host: 127.0.0.1                                # shared by both lanes
+            calling_port: 8443
+            messages_port: 8444
+            gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
+
+    The one thing NOT collapsed is the secret. `shared_secret` cannot serve both lanes: StandIn
+    issues two keys per connection on purpose (voice signs "{ts}.{callId}" on the WS handshake, chat
+    signs "{ts}.{rawBody}" over HTTP), so a key that leaks from one surface cannot forge the other,
+    and they rotate independently. Reusing one value would silently fail HMAC anyway - the portal
+    stores them as separate columns and the gateway signs with the chat one.
+
+    Older shapes still resolve, deterministically: nested managed_bot/managed_chat blocks, `port`
+    for the voice port, and the TEAMS_CALL_MANAGED_{BOT,CHAT}_* env names.
+    """
+    """Resolve the managed chat lane from ``managed_chat:`` under this plugin's config block, with
+    ``TEAMS_CALL_MANAGED_CHAT_*`` env as the fallback - the same precedence every other setting here
+    uses. Nested under the plugin instead of a top-level namespace so config.yaml reads as one
+    Teams integration:
+
+        plugins:
+          entries:
+            teams_call:
+              config:
+                shared_secret: ${TEAMS_CALL_SHARED_SECRET}
+                managed_chat:
+                  secret: ${TEAMS_CALL_MANAGED_CHAT_SECRET}
+                  port: 8444
+    """
+    # `managed_bot` is the name - the StandIn Managed Bot connection, of which chat is one lane.
+    # `managed_chat` stays accepted as an alias so an early adopter's config keeps working.
+    block = extra.get("managed_bot")
+    if not isinstance(block, Mapping):
+        block = extra.get("managed_chat")
+    block = block if isinstance(block, Mapping) else {}
+
+    def _flat(flat_key: str, nested_key: str) -> str:
+        """Flat plugin-root key wins; the nested block is the compatibility path."""
+        return str(extra.get(flat_key) or block.get(nested_key) or "").strip()
+
+    def _env(suffix: str) -> str:
+        """TEAMS_CALL_MANAGED_BOT_* first, the older MANAGED_CHAT_* spelling as fallback."""
+        return (
+            plugin_env(f"TEAMS_CALL_MANAGED_BOT_{suffix}", "").strip()
+            or plugin_env(f"TEAMS_CALL_MANAGED_CHAT_{suffix}", "").strip()
+        )
+    return {
+        # chat_secret at the plugin root; managed_bot.chat_secret / .secret still accepted.
+        "managed_chat_secret": (
+            str(extra.get("messages_secret") or extra.get("chat_secret") or "").strip()
+            or str(block.get("chat_secret") or block.get("secret") or "").strip()
+            or plugin_env("MSTEAMS_CALL_MESSAGES_SECRET", "").strip()
+            or plugin_env("TEAMS_CALL_CHAT_SECRET", "").strip()
+            or _env("SECRET")
+            # the single connection secret, LAST so a per-lane override always wins
+            or str(extra.get("secret") or "").strip()
+            or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
+        ),
+        # The chat lane binds the SAME host as voice unless told otherwise - one machine, one
+        # interface. Defaults to the voice host so "bind to the tailnet" is a single edit.
+        "managed_chat_host": (
+            _flat("host", "host")
+            or _env("HOST")
+            or "0.0.0.0"
+        ),
+        "managed_chat_port": _coerce_int(
+            extra.get("messages_port") or block.get("port") or _env("PORT"), 8444
+        ),
+        "managed_chat_path": (
+            _flat("messages_path", "path")
+            or _env("PATH")
+            or DEFAULT_MESSAGES_PATH
+        ),
+        "managed_chat_gateway_reply_url": (
+            _flat("gateway_reply_endpoint", "gateway_reply_url")
+            or _env("GATEWAY_REPLY_URL")
+            or "https://teams.standin.komaa.com/api/chat/reply"
+        ),
+    }
 
 
 def _resolve_sharepoint(extra: Mapping[str, Any]) -> str:

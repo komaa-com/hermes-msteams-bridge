@@ -11,7 +11,7 @@ default, and meaning. All values match the code in `config.py` and
 
 Values are resolved in **priority order**:
 
-1. The `plugins.entries.teams_call.config` block in **`config.yaml`**.
+1. The `plugins.entries.msteams_call.config` block in **`config.yaml`**.
 2. **Environment variables** (typically in `~/.hermes/.env`).
 3. Safe **defaults**.
 
@@ -22,9 +22,9 @@ config of its own. Secrets are never logged.
 ```yaml
 plugins:
   enabled:
-    - teams_call
+    - msteams_call
   entries:
-    teams_call:
+    msteams_call:
       config:
         shared_secret: ${TEAMS_CALL_SHARED_SECRET}
         host: 127.0.0.1
@@ -33,6 +33,23 @@ plugins:
         realtime:
           # ...realtime keys below...
 ```
+
+## StandIn Managed Bot (chat lane)
+
+Set these when StandIn provides the Teams bot (installed from the Teams Store) rather than you
+running your own Azure bot. One `secret` covers calls and chat; per-lane `calling_secret`/`messages_secret` override it.
+There is no separate enable flag.
+
+| Setting | Env | Default | What it does |
+|---|---|---|---|
+| `messages_secret` | `TEAMS_CALL_CHAT_SECRET` | - | The connection's CHAT key from the StandIn portal. Separate from `shared_secret` (voice) on purpose: neither key can sign for the other, and they rotate independently. |
+| `messages_port` | `TEAMS_CALL_MANAGED_BOT_PORT` | `8444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (8443). |
+| `messages_path` | `TEAMS_CALL_MANAGED_BOT_PATH` | `/managed/chat` | Path the gateway posts to. |
+| `gateway_reply_endpoint` | `TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL` | StandIn's `/api/chat/reply` | Where replies are posted back. |
+| `host` | `TEAMS_CALL_HOST` | `0.0.0.0` | Shared with the voice lane. Defaults to all interfaces because the gateway must reach it; set it to your tailnet/VPN address (or firewall the port) if you reach the agent privately. |
+
+One agent instance serves ONE StandIn connection - the chat secret belongs to a single tenant
+binding. Run a second instance for a second organization; never share a secret across tenants.
 
 ## Bridge settings (`TeamsVoiceConfig`)
 
@@ -75,7 +92,7 @@ These have sensible fixed defaults and are not exposed as config keys today:
 
 ## Realtime settings (`RealtimeConfig`)
 
-These live under `plugins.entries.teams_call.config.realtime` (or the matching env
+These live under `plugins.entries.msteams_call.config.realtime` (or the matching env
 vars) and configure the OpenAI/Azure Realtime speech-to-speech engine. Only used by
 `--handler realtime`.
 

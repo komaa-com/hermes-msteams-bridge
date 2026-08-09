@@ -124,6 +124,36 @@ async def standalone_voice_send(
     return await deliver_by_voice(chat_id, message, thread_id or "")
 
 
+_MANAGED_CONSULTS: dict[str, Any] = {}
+_MANAGED_CONSULTS_MAX = 64
+
+
+async def _respond_managed_chat(cfg, message) -> str:
+    """One agent turn for a managed-chat message, gateway-hosted path.
+
+    Same model as the CLI path: one AgentConsult per Teams conversation so a chat keeps its context,
+    LRU-capped because continuity lives in the stable session_id rather than the instance.
+    """
+    import json as _json
+
+    from .agent_consult import AgentConsult
+    from .managed_chat import attachments_note
+
+    key = f"{message.tenant_id}:{message.conversation_id}"
+    consult = _MANAGED_CONSULTS.pop(key, None) or AgentConsult(session_id=f"msteams-chat:{key}")
+    _MANAGED_CONSULTS[key] = consult
+    while len(_MANAGED_CONSULTS) > _MANAGED_CONSULTS_MAX:
+        _MANAGED_CONSULTS.pop(next(iter(_MANAGED_CONSULTS)))
+
+    note = attachments_note(message.attachments)
+    card = (
+        f"[card button pressed - submit payload: {_json.dumps(message.card_action)}]"
+        if message.card_action else ""
+    )
+    query = "\n".join(x for x in (message.text, card, note) if x)
+    return await consult.ask(query, timeout_s=280.0)
+
+
 def get_adapter_class() -> Any:
     """Build (once) the real adapter class. Host-only: imports the sanctioned
     ``gateway.platforms.base`` surface lazily."""
@@ -140,6 +170,7 @@ def get_adapter_class() -> Any:
         def __init__(self, config: Any) -> None:
             super().__init__(config, Platform("teams_call"))
             self._service = None
+            self._managed_chat = None
 
         async def connect(self, *, is_reconnect: bool = False) -> bool:
             from .config import resolve_config
@@ -171,11 +202,32 @@ def get_adapter_class() -> Any:
                 )
                 return False
             self._service = service
+
+            # StandIn Managed Bot chat lane, in the SAME process as voice - one connection, both
+            # planes. Failure here must not take voice down: the call path is the product's core,
+            # and a chat port conflict is a configuration problem, not a reason to drop calls.
+            try:
+                from .managed_chat import start_managed_chat_if_configured
+
+                self._managed_chat = await start_managed_chat_if_configured(
+                    cfg, lambda message: _respond_managed_chat(cfg, message)
+                )
+                if self._managed_chat is not None:
+                    logger.info(
+                        "[teams_call] managed chat lane on %s:%s%s",
+                        cfg.managed_chat_host, cfg.managed_chat_port, cfg.managed_chat_path,
+                    )
+            except Exception:
+                logger.exception("[teams_call] managed chat lane failed to start; voice continues")
+
             self._mark_connected()
             logger.info("[teams_call] gateway-resident bridge on %s:%s", cfg.host, cfg.port)
             return True
 
         async def disconnect(self) -> None:
+            if self._managed_chat is not None:
+                await self._managed_chat.stop()
+                self._managed_chat = None
             if self._service is not None:
                 await self._service.stop()
                 self._service = None

@@ -42,11 +42,11 @@ numpy = ["numpy>=1.21"]
 # Office formats additionally need LibreOffice (`soffice`) on PATH.
 documents = ["pypdfium2>=4.30", "pillow>=10"]
 
-# Hermes discovers the plugin through this entry-point group. The key (teams_call)
+# Hermes discovers the plugin through this entry-point group. The key (msteams_call)
 # is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
-teams_call = "hermes_msteams_bridge"
+msteams_call = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]
 where = ["src"]

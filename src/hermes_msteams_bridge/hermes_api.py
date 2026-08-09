@@ -519,16 +519,19 @@ def load_hermes_config() -> dict:
         return {}
 
 
+#: Plugin key, newest first. `teams_call` was the name before the platform prefix; a deployed
+#: config.yaml still says it, and reading only the new key would silently drop every setting.
+PLUGIN_KEYS = ("msteams_call", "teams_call")
+
+
 def plugin_config_block() -> dict:
-    """The ``plugins.entries.teams_call.config`` block (``{}`` when unset)."""
-    node = (
-        load_hermes_config()
-        .get("plugins", {})
-        .get("entries", {})
-        .get("teams_call", {})
-        .get("config", {})
-    )
-    return node if isinstance(node, dict) else {}
+    """The ``plugins.entries.<msteams_call|teams_call>.config`` block (``{}`` when unset)."""
+    entries = load_hermes_config().get("plugins", {}).get("entries", {})
+    for key in PLUGIN_KEYS:
+        node = (entries.get(key) or {}).get("config", {})
+        if isinstance(node, dict) and node:
+            return node
+    return {}
 
 
 def model_config_block() -> dict:

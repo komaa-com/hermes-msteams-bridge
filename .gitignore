@@ -10,3 +10,4 @@ venv/
 # secrets
 .env
 .env.*
+uv.lock

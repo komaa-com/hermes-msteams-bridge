@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import asyncio
 import json
 import signal
@@ -122,6 +123,50 @@ def teams_call_command(args) -> int:
 
             service = VoiceBridgeService(config=cfg, handler_factory=factory)
             await service.start()  # listener + reaper + durable-job resume
+
+            # StandIn managed chat lane (protocol/chat-schema.yaml): started beside the voice server when
+            # configured under THIS plugin's config (managed_chat.secret, or
+            # TEAMS_CALL_MANAGED_CHAT_SECRET) - same namespace as the voice lane, not a second one. One
+            # AgentConsult per Teams conversation, so a chat keeps its context across messages - the same
+            # session-continuity model the voice consult uses. Voice is untouched when unset.
+            managed_chat = None
+            chat_secret = cfg.managed_chat_secret
+            if chat_secret:
+                from .agent_consult import AgentConsult
+                from .managed_chat import (
+                    InboundChat,
+                    attachments_note,
+                    start_managed_chat_if_configured,
+                )
+
+                # LRU-capped - unbounded growth is a slow leak on a long-lived process.
+                # Eviction is SAFE here because continuity lives in the session_id (stable per
+                # conversation), not in the AgentConsult instance: a re-created consult resumes the
+                # same session.
+                consults: dict[str, AgentConsult] = {}
+                max_consults = 64
+
+                async def _respond(message: InboundChat) -> str:
+                    key = f"{message.tenant_id}:{message.conversation_id}"
+                    consult = consults.pop(key, None) or AgentConsult(session_id=f"msteams-chat:{key}")
+                    consults[key] = consult  # re-insert = most recently used (dicts keep order)
+                    while len(consults) > max_consults:
+                        consults.pop(next(iter(consults)))
+                    note = attachments_note(message.attachments)
+                    # Card submits arrive with EMPTY text and the payload in card_action (protocol v1
+                    # additive field): fold it in so a button press is a meaningful turn.
+                    card_note = (
+                        f"[card button pressed - submit payload: {json.dumps(message.card_action)}]"
+                        if message.card_action else ""
+                    )
+                    query = "\n".join(x for x in (message.text, card_note, note) if x)
+                    # ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
+                    # under the server's TURN_TIMEOUT_S (300) so the consult's own timeout message
+                    # reaches the user instead of the blunt turn-level one.
+                    return await consult.ask(query, timeout_s=280.0)
+
+                # Shared with the gateway-resident adapter so the two hosting paths cannot drift.
+                managed_chat = await start_managed_chat_if_configured(cfg, _respond)
             # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
             # (Ctrl-C) set the stop event so server.stop() drains live calls -
             # closing each with a reason so per-call teardown runs and the
@@ -139,6 +184,8 @@ def teams_call_command(args) -> int:
             try:
                 await stop.wait()
             finally:
+                if managed_chat is not None:
+                    await managed_chat.stop()
                 await service.stop()
 
         try:
