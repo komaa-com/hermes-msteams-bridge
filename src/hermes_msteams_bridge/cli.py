@@ -125,11 +125,12 @@ def teams_call_command(args) -> int:
             await service.start()  # listener + reaper + durable-job resume
 
             # StandIn managed chat lane (protocol/chat-schema.yaml): started beside the voice server when
-            # configured (STANDIN_CHAT_SECRET; optional STANDIN_CHAT_PORT/PATH/GATEWAY_REPLY_URL). One
+            # configured under THIS plugin's config (managed_chat.secret, or
+            # TEAMS_CALL_MANAGED_CHAT_SECRET) - same namespace as the voice lane, not a second one. One
             # AgentConsult per Teams conversation, so a chat keeps its context across messages - the same
             # session-continuity model the voice consult uses. Voice is untouched when unset.
             managed_chat = None
-            chat_secret = os.environ.get("STANDIN_CHAT_SECRET", "")
+            chat_secret = cfg.managed_chat_secret
             if chat_secret:
                 from .agent_consult import AgentConsult
                 from .managed_chat import (
@@ -167,12 +168,10 @@ def teams_call_command(args) -> int:
 
                 chat_cfg = ManagedChatConfig(
                     chat_secret=chat_secret,
-                    gateway_reply_url=os.environ.get(
-                        "STANDIN_GATEWAY_REPLY_URL", "https://teams.standin.komaa.com/api/chat/reply"
-                    ),
-                    host=os.environ.get("STANDIN_CHAT_HOST", "0.0.0.0"),
-                    port=int(os.environ.get("STANDIN_CHAT_PORT", "8444")),
-                    path=os.environ.get("STANDIN_CHAT_PATH", "/managed/chat"),
+                    gateway_reply_url=cfg.managed_chat_gateway_reply_url,
+                    host=cfg.managed_chat_host,
+                    port=cfg.managed_chat_port,
+                    path=cfg.managed_chat_path,
                 )
                 managed_chat = ManagedChatServer(chat_cfg, _respond)
                 await managed_chat.start()

@@ -38,6 +38,17 @@ optional_env:
     description: "Per-call vision spend cap across look_at_screen + ambient push (0 = unlimited)."
   - name: TEAMS_CALL_SESSION_SCOPE
     description: "Agent session continuity: per-call | per-thread | per-aad."
+  - name: TEAMS_CALL_MANAGED_CHAT_SECRET
+    description: "StandIn MANAGED chat lane: the connection's CHAT key (separate from the voice shared secret). Unset = the chat lane stays off and voice is unaffected."
+    password: true
+  - name: TEAMS_CALL_MANAGED_CHAT_HOST
+    description: "Bind address for the managed chat endpoint (default 0.0.0.0)."
+  - name: TEAMS_CALL_MANAGED_CHAT_PORT
+    description: "Port for the managed chat endpoint (default 8444)."
+  - name: TEAMS_CALL_MANAGED_CHAT_PATH
+    description: "Path the StandIn gateway POSTs inbound messages to (default /managed/chat)."
+  - name: TEAMS_CALL_MANAGED_CHAT_GATEWAY_REPLY_URL
+    description: "StandIn gateway reply endpoint the agent POSTs answers back to (default https://teams.standin.komaa.com/api/chat/reply)."
   - name: TEAMS_CALL_WORKER_BASE_URL
     description: "Loopback HTTP endpoint the StandIn media bridge exposes for outbound place-call (default http://127.0.0.1:9440)."
   - name: TEAMS_CALL_TENANT_ID

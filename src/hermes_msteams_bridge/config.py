@@ -87,6 +87,15 @@ class TeamsVoiceConfig:
     session_scope: str = "per-call"
     # Group-call wake phrases (speak only when addressed).
     wake_phrases: tuple[str, ...] = ("assistant", "hermes")
+    # StandIn MANAGED chat lane. Part of THIS plugin's config (plugins.entries.teams_call.config
+    # -> managed_chat, env TEAMS_CALL_MANAGED_CHAT_*) rather than a separate config root: it is the
+    # same Teams integration as the voice lane, just the chat plane, and an operator should not have
+    # to learn a second namespace to turn it on. Empty secret = lane off, fail closed.
+    managed_chat_secret: str = ""
+    managed_chat_host: str = "0.0.0.0"
+    managed_chat_port: int = 8444
+    managed_chat_path: str = "/managed/chat"
+    managed_chat_gateway_reply_url: str = "https://teams.standin.komaa.com/api/chat/reply"
     # Post end-of-call meeting minutes to the Teams chat (opt-in).
     meeting_recap: bool = False
     # Root directory show_file may display from (containment). Empty =
@@ -227,7 +236,51 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_CALL_ALLOWLIST_ALLOW_NAMES"),
         allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_CALL_ALLOW_REMOTE_WORKER"),
         allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_CALL_ALLOW_ALL"),
+        **_resolve_managed_chat(extra),
     )
+
+
+def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
+    """Resolve the managed chat lane from ``managed_chat:`` under this plugin's config block, with
+    ``TEAMS_CALL_MANAGED_CHAT_*`` env as the fallback - the same precedence every other setting here
+    uses. Nested under the plugin instead of a top-level namespace so config.yaml reads as one
+    Teams integration:
+
+        plugins:
+          entries:
+            teams_call:
+              config:
+                shared_secret: ${TEAMS_CALL_SHARED_SECRET}
+                managed_chat:
+                  secret: ${TEAMS_CALL_MANAGED_CHAT_SECRET}
+                  port: 8444
+    """
+    block = extra.get("managed_chat")
+    block = block if isinstance(block, Mapping) else {}
+    return {
+        "managed_chat_secret": (
+            str(block.get("secret") or "").strip()
+            or plugin_env("TEAMS_CALL_MANAGED_CHAT_SECRET", "").strip()
+        ),
+        "managed_chat_host": (
+            str(block.get("host") or "").strip()
+            or plugin_env("TEAMS_CALL_MANAGED_CHAT_HOST", "").strip()
+            or "0.0.0.0"
+        ),
+        "managed_chat_port": _coerce_int(
+            block.get("port") or plugin_env("TEAMS_CALL_MANAGED_CHAT_PORT", ""), 8444
+        ),
+        "managed_chat_path": (
+            str(block.get("path") or "").strip()
+            or plugin_env("TEAMS_CALL_MANAGED_CHAT_PATH", "").strip()
+            or "/managed/chat"
+        ),
+        "managed_chat_gateway_reply_url": (
+            str(block.get("gateway_reply_url") or "").strip()
+            or plugin_env("TEAMS_CALL_MANAGED_CHAT_GATEWAY_REPLY_URL", "").strip()
+            or "https://teams.standin.komaa.com/api/chat/reply"
+        ),
+    }
 
 
 def _resolve_sharepoint(extra: Mapping[str, Any]) -> str:
