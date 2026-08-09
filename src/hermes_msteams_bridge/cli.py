@@ -139,14 +139,25 @@ def teams_call_command(args) -> int:
                     attachments_note,
                 )
 
+                # Review A3: LRU-capped - unbounded growth is a slow leak on a long-lived process.
+                # Eviction is SAFE here because continuity lives in the session_id (stable per
+                # conversation), not in the AgentConsult instance: a re-created consult resumes the
+                # same session.
                 consults: dict[str, AgentConsult] = {}
+                max_consults = 64
 
                 async def _respond(message: InboundChat) -> str:
                     key = f"{message.tenant_id}:{message.conversation_id}"
-                    consult = consults.setdefault(key, AgentConsult(session_id=f"msteams-chat:{key}"))
+                    consult = consults.pop(key, None) or AgentConsult(session_id=f"msteams-chat:{key}")
+                    consults[key] = consult  # re-insert = most recently used (dicts keep order)
+                    while len(consults) > max_consults:
+                        consults.pop(next(iter(consults)))
                     note = attachments_note(message.attachments)
                     query = "\n".join(x for x in (message.text, note) if x)
-                    return await consult.ask(query)
+                    # Review A4: ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
+                    # under the server's TURN_TIMEOUT_S (300) so the consult's own timeout message
+                    # reaches the user instead of the blunt turn-level one.
+                    return await consult.ask(query, timeout_s=280.0)
 
                 chat_cfg = ManagedChatConfig(
                     chat_secret=chat_secret,

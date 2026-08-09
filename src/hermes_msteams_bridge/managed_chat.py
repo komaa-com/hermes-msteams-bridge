@@ -265,7 +265,10 @@ class ManagedChatServer:
                     # full agent turn (typing + respond + reply) DURING shutdown. asyncio delivers our own
                     # cancellation as CancelledError at this await - re-raise when it is ours.
                     current = asyncio.current_task()
-                    if current is not None and current.cancelling() > 0:
+                    # Review A5: Task.cancelling() is 3.11+ and requires-python allows 3.10 - there,
+                    # fall back to re-raising unconditionally (the pre-P2 behavior was to swallow;
+                    # over-raising during shutdown is the safe direction).
+                    if current is None or not hasattr(current, "cancelling") or current.cancelling() > 0:
                         raise
                 except Exception:  # noqa: BLE001 - a failed turn must not dam the chain
                     pass
@@ -293,6 +296,17 @@ class ManagedChatServer:
             text = await asyncio.wait_for(self._respond(message), timeout=self.TURN_TIMEOUT_S)
             if text and text.strip():
                 await self._post_reply(build_reply(message, text))
+            else:
+                # Parity with the OpenClaw A6 fix: after the typing indicator, silence looks exactly
+                # like a hang - an empty answer is said out loud as an error-kind reply.
+                logger.warning("managed chat: agent returned an empty answer")
+                await self._post_reply(
+                    build_reply(
+                        message,
+                        "I couldn't come up with an answer to that - try rephrasing, or ask something else.",
+                        "error",
+                    )
+                )
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the user must hear SOMETHING
@@ -301,22 +315,44 @@ class ManagedChatServer:
                 build_reply(message, "Something went wrong answering that - please try again.", "error")
             )
 
+    #: Review A1: the reply leg retries a bounded number of times - the idempotencyKey
+    #: (activityId:kind) makes a duplicate arrival a silent gateway-side drop, so retrying is safe,
+    #: and without it one transient gateway blip ate a finished agent turn.
+    REPLY_ATTEMPTS = 3
+
     async def _post_reply(self, reply: dict[str, Any]) -> None:
         body = json.dumps(reply, separators=(",", ":"))
-        ts, sig = sign(self._config.chat_secret, body, self._now_ms())
-        try:
-            async with self._session.post(
-                self._config.gateway_reply_url,
-                data=body.encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    HEADER_TIMESTAMP: ts,
-                    HEADER_SIGNATURE: sig,
-                },
-            ) as resp:
-                if resp.status >= 400:
-                    logger.warning("managed chat: gateway reply -> HTTP %s", resp.status)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - reply delivery is best-effort per attempt
-            logger.warning("managed chat: gateway reply failed", exc_info=True)
+        # Typing indicators never retry (ephemeral by nature).
+        attempts = 1 if reply.get("kind") == "typing" else self.REPLY_ATTEMPTS
+        for attempt in range(1, attempts + 1):
+            # Fresh signature per attempt: a retry after backoff must not replay a stale timestamp
+            # into the gateway's +/-5min window edge.
+            ts, sig = sign(self._config.chat_secret, body, self._now_ms())
+            try:
+                async with self._session.post(
+                    self._config.gateway_reply_url,
+                    data=body.encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        HEADER_TIMESTAMP: ts,
+                        HEADER_SIGNATURE: sig,
+                    },
+                ) as resp:
+                    if resp.status < 400:
+                        return
+                    logger.warning(
+                        "managed chat: gateway reply -> HTTP %s (attempt %d/%d)",
+                        resp.status, attempt, attempts,
+                    )
+                    # 5xx/429 are retryable; other 4xx is OUR bug - the same bytes cannot succeed.
+                    if resp.status < 500 and resp.status != 429:
+                        return
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - reply delivery is best-effort per attempt
+                logger.warning(
+                    "managed chat: gateway reply failed (attempt %d/%d)", attempt, attempts,
+                    exc_info=True,
+                )
+            if attempt < attempts:
+                await asyncio.sleep(1.0 * 4 ** (attempt - 1))
