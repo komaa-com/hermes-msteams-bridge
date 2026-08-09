@@ -135,9 +135,14 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         # ourselves for addressed turns). Race-free.
         await rt.set_auto_response(False)
         self._auto_on = False
-        # Greeting fires on recording-active (greet-on-answer); show a neutral face now.
+        # Greeting normally fires on recording-active (greet-on-answer); show a neutral face now.
         await self._safe_expression(expression.NEUTRAL)
         self._ambient_task = asyncio.create_task(self._ambient_vision_loop())
+        # ...but when recording is NOT required, that transition may never arrive, and the greeting
+        # was the ONLY thing that started the conversation: the call connected and the bot sat mute
+        # for its whole duration. Inbound is already answered, so there is nothing to wait for.
+        if self._greet_without_recording(session):
+            await self._run_greeting_plan(session)
 
     def _build_instructions(self) -> str:
         """Augment base instructions with roster name + group-gate etiquette.
@@ -230,7 +235,14 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         await super().on_recording_status(session, msg)
         # Outbound delivery: speak the result only once the callee has answered
         # (recording active), not while the phone is still ringing (greet-on-answer).
-        if not session.recording_active or self._rt is None:
+        if not session.recording_active:
+            return
+        await self._run_greeting_plan(session)
+
+    async def _run_greeting_plan(self, session: CallSession) -> None:
+        """Deliver the opening line. Reached either when recording goes active (greet-on-answer) or,
+        when recording is not required, as soon as an inbound session is ready."""
+        if self._rt is None:
             return
         plan = self._greeting_plan()
         if plan is None:

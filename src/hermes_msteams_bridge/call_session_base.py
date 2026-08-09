@@ -148,7 +148,25 @@ class BaseTeamsCallHandler(CallSessionHandler):
         return ("greet", self._first_name())
 
     def _recording_ok(self, session: CallSession) -> bool:
+        """Is the recording precondition satisfied for this session?
+
+        The single place the ``require_recording_status`` policy is interpreted. It existed before and
+        was never called: every gate open-coded its own check, and several of them tested
+        ``session.recording_active`` alone. Those paths therefore required recording even when the
+        operator had turned the requirement off.
+        """
         return (not self._require_recording) or session.recording_active
+
+    def _greet_without_recording(self, session: CallSession) -> bool:
+        """Should we greet NOW, rather than waiting for recording to start?
+
+        Only when the requirement is off AND this is an inbound call. Outbound is the reason the
+        greeting hangs off ``recording.status`` in the first place: on a call WE placed, recording
+        going active is the proxy for "the callee picked up", so greeting early would talk into a
+        ringing phone. Inbound has already been answered by definition - there is nothing left to
+        wait for, and waiting is what left the bot mute for the whole call.
+        """
+        return (not self._require_recording) and not self._outbound and not session.recording_active
 
     async def _begin_session(self, session: CallSession, msg: protocol.SessionStart) -> bool:
         """Common ``session.start``: state + allowlist + scope. False = rejected."""
