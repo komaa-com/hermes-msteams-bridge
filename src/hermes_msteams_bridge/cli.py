@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import asyncio
 import json
 import signal
@@ -122,6 +123,42 @@ def teams_call_command(args) -> int:
 
             service = VoiceBridgeService(config=cfg, handler_factory=factory)
             await service.start()  # listener + reaper + durable-job resume
+
+            # StandIn MANAGED chat lane (MANAGED-BOT-TIER.md 4.8): started beside the voice server when
+            # configured (STANDIN_CHAT_SECRET; optional STANDIN_CHAT_PORT/PATH/GATEWAY_REPLY_URL). One
+            # AgentConsult per Teams conversation, so a chat keeps its context across messages - the same
+            # session-continuity model the voice consult uses. Voice is untouched when unset.
+            managed_chat = None
+            chat_secret = os.environ.get("STANDIN_CHAT_SECRET", "")
+            if chat_secret:
+                from .agent_consult import AgentConsult
+                from .managed_chat import (
+                    InboundChat,
+                    ManagedChatConfig,
+                    ManagedChatServer,
+                    attachments_note,
+                )
+
+                consults: dict[str, AgentConsult] = {}
+
+                async def _respond(message: InboundChat) -> str:
+                    key = f"{message.tenant_id}:{message.conversation_id}"
+                    consult = consults.setdefault(key, AgentConsult(session_id=f"msteams-chat:{key}"))
+                    note = attachments_note(message.attachments)
+                    query = "\n".join(x for x in (message.text, note) if x)
+                    return await consult.ask(query)
+
+                chat_cfg = ManagedChatConfig(
+                    chat_secret=chat_secret,
+                    gateway_reply_url=os.environ.get(
+                        "STANDIN_GATEWAY_REPLY_URL", "https://teams.standin.komaa.com/api/chat/reply"
+                    ),
+                    host=os.environ.get("STANDIN_CHAT_HOST", "0.0.0.0"),
+                    port=int(os.environ.get("STANDIN_CHAT_PORT", "8444")),
+                    path=os.environ.get("STANDIN_CHAT_PATH", "/managed/chat"),
+                )
+                managed_chat = ManagedChatServer(chat_cfg, _respond)
+                await managed_chat.start()
             # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
             # (Ctrl-C) set the stop event so server.stop() drains live calls -
             # closing each with a reason so per-call teardown runs and the
@@ -139,6 +176,8 @@ def teams_call_command(args) -> int:
             try:
                 await stop.wait()
             finally:
+                if managed_chat is not None:
+                    await managed_chat.stop()
                 await service.stop()
 
         try:
