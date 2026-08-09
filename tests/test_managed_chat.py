@@ -1,4 +1,4 @@
-"""StandIn managed chat mode (MANAGED-BOT-TIER.md 4.8): the agent side of the
+"""StandIn managed chat mode (protocol/chat-schema.yaml): the agent side of the
 normalized relay. The HMAC KAT is the same vector pinned in @standin/bridge-hmac
 (TS), the gateway (C#), and the OpenClaw plugin - four implementations, one set
 of bytes."""
@@ -162,8 +162,9 @@ class TestSchemaDrift:
         assert f"value: {REPLAY_WINDOW_MS}" in self.SCHEMA
 
 
-@pytest.mark.asyncio
 class TestServerEndToEnd:
+    # NOTE: sync test methods wrapping asyncio.run - the repo convention (pytest-asyncio is not a
+    # test dependency here; see test_gateway_spike.py).
     async def _start(self, respond=None):
         from aiohttp import web
 
@@ -231,7 +232,10 @@ class TestServerEndToEnd:
         }
     )
 
-    async def test_signed_message_acks_then_replies_with_typing_and_text(self):
+    def test_signed_message_acks_then_replies_with_typing_and_text(self):
+        asyncio.run(self._test_signed_message_acks_then_replies_with_typing_and_text())
+
+    async def _test_signed_message_acks_then_replies_with_typing_and_text(self):
         server, gw, port, replies, reply_seen, calls = await self._start()
         try:
             assert await self._post(port, self.INBOUND) == 200
@@ -247,7 +251,10 @@ class TestServerEndToEnd:
             await server.stop()
             await gw.cleanup()
 
-    async def test_unsigned_and_mis_signed_are_rejected_without_an_agent_turn(self):
+    def test_unsigned_and_mis_signed_are_rejected_without_an_agent_turn(self):
+        asyncio.run(self._test_unsigned_and_mis_signed_are_rejected_without_an_agent_turn())
+
+    async def _test_unsigned_and_mis_signed_are_rejected_without_an_agent_turn(self):
         turns = 0
 
         async def respond(_m):
@@ -263,7 +270,10 @@ class TestServerEndToEnd:
             await server.stop()
             await gw.cleanup()
 
-    async def test_redelivery_acks_without_a_second_turn(self):
+    def test_redelivery_acks_without_a_second_turn(self):
+        asyncio.run(self._test_redelivery_acks_without_a_second_turn())
+
+    async def _test_redelivery_acks_without_a_second_turn(self):
         turns = 0
 
         async def respond(_m):
@@ -282,10 +292,12 @@ class TestServerEndToEnd:
             await gw.cleanup()
 
 
-@pytest.mark.asyncio
 class TestOrderingSerialization(TestServerEndToEnd):
-    async def test_turns_in_one_conversation_run_sequentially(self):
-        # Review P0-4: the schema promises per-conversation ordering - replies must not overtake.
+    def test_turns_in_one_conversation_run_sequentially(self):
+        asyncio.run(self._test_turns_in_one_conversation_run_sequentially())
+
+    async def _test_turns_in_one_conversation_run_sequentially(self):
+        # The schema promises per-conversation ordering - replies must not overtake.
         events: list[str] = []
         gates: dict[str, asyncio.Event] = {}
 

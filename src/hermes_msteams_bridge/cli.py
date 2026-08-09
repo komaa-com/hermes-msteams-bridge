@@ -124,7 +124,7 @@ def teams_call_command(args) -> int:
             service = VoiceBridgeService(config=cfg, handler_factory=factory)
             await service.start()  # listener + reaper + durable-job resume
 
-            # StandIn MANAGED chat lane (MANAGED-BOT-TIER.md 4.8): started beside the voice server when
+            # StandIn managed chat lane (protocol/chat-schema.yaml): started beside the voice server when
             # configured (STANDIN_CHAT_SECRET; optional STANDIN_CHAT_PORT/PATH/GATEWAY_REPLY_URL). One
             # AgentConsult per Teams conversation, so a chat keeps its context across messages - the same
             # session-continuity model the voice consult uses. Voice is untouched when unset.
@@ -139,7 +139,7 @@ def teams_call_command(args) -> int:
                     attachments_note,
                 )
 
-                # Review A3: LRU-capped - unbounded growth is a slow leak on a long-lived process.
+                # LRU-capped - unbounded growth is a slow leak on a long-lived process.
                 # Eviction is SAFE here because continuity lives in the session_id (stable per
                 # conversation), not in the AgentConsult instance: a re-created consult resumes the
                 # same session.
@@ -160,7 +160,7 @@ def teams_call_command(args) -> int:
                         if message.card_action else ""
                     )
                     query = "\n".join(x for x in (message.text, card_note, note) if x)
-                    # Review A4: ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
+                    # ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
                     # under the server's TURN_TIMEOUT_S (300) so the consult's own timeout message
                     # reaches the user instead of the blunt turn-level one.
                     return await consult.ask(query, timeout_s=280.0)

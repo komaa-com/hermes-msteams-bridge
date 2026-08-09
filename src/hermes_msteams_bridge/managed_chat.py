@@ -1,4 +1,4 @@
-"""StandIn MANAGED chat mode (MANAGED-BOT-TIER.md 4.8, ``protocol/chat-schema.yaml``).
+"""StandIn managed chat mode (wire contract: ``protocol/chat-schema.yaml``).
 
 On the managed tier the customer does not own a Teams bot: StandIn's gateway
 terminates Bot Framework and speaks the normalized chat protocol to this agent
@@ -198,7 +198,7 @@ class ManagedChatServer:
         self._runner: Any = None
         self._session: Any = None
         self._tasks: set[asyncio.Task] = set()
-        # Per-conversation processing chains (review P0-4): the schema promises per-conversation
+        # Per-conversation processing chains: the schema promises per-conversation
         # ORDERING, and independent tasks per message let replies overtake each other. Each
         # conversation's turns run strictly sequentially; different conversations stay concurrent.
         self._chains: dict[str, asyncio.Task] = {}
@@ -254,7 +254,7 @@ class ManagedChatServer:
         return web.json_response({"ok": True})
 
     def _enqueue_turn(self, message: InboundChat) -> None:
-        # Chain the turn behind the conversation's previous one (ordering, review P0-4).
+        # Chain the turn behind the conversation's previous one (ordering).
         key = f"{message.tenant_id}:{message.conversation_id}"
         prev = self._chains.get(key)
 
@@ -263,12 +263,12 @@ class ManagedChatServer:
                 try:
                     await prev
                 except asyncio.CancelledError:
-                    # Re-review P2: distinguish PREV being cancelled from THIS task being cancelled while
+                    # Distinguish PREV being cancelled from THIS task being cancelled while
                     # parked on prev. Swallowing our own cancellation here would let a queued turn run its
                     # full agent turn (typing + respond + reply) DURING shutdown. asyncio delivers our own
                     # cancellation as CancelledError at this await - re-raise when it is ours.
                     current = asyncio.current_task()
-                    # Review A5: Task.cancelling() is 3.11+ and requires-python allows 3.10 - there,
+                    # Task.cancelling() is 3.11+ and requires-python allows 3.10 - there,
                     # fall back to re-raising unconditionally (the pre-P2 behavior was to swallow;
                     # over-raising during shutdown is the safe direction).
                     if current is None or not hasattr(current, "cancelling") or current.cancelling() > 0:
@@ -288,7 +288,7 @@ class ManagedChatServer:
 
         task.add_done_callback(_cleanup)
 
-    #: Re-review P2: serialization means a HUNG turn wedges its whole conversation forever (every later
+    #: Serialization means a HUNG turn would wedge its whole conversation forever (every later
     #: message chains behind it). Every turn is bounded; a timed-out turn fails like any error, the user
     #: hears about it, and the chain moves on. Generous - agent turns legitimately run long.
     TURN_TIMEOUT_S = 300.0
@@ -318,7 +318,7 @@ class ManagedChatServer:
                 build_reply(message, "Something went wrong answering that - please try again.", "error")
             )
 
-    #: Review A1: the reply leg retries a bounded number of times - the idempotencyKey
+    #: The reply leg retries a bounded number of times - the idempotencyKey
     #: (activityId:kind) makes a duplicate arrival a silent gateway-side drop, so retrying is safe,
     #: and without it one transient gateway blip ate a finished agent turn.
     REPLY_ATTEMPTS = 3
