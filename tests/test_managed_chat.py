@@ -238,7 +238,7 @@ class TestManagedBotConfigResolution:
 
 
 class TestSchemaDrift:
-    """protocol/chat-schema.yaml is the source of truth (D6). A subset is legal;
+    """protocol/chat-schema.yaml is the source of truth. A subset is legal;
     a name the schema does not know is a typo that silently drops data."""
 
     SCHEMA = (Path(__file__).parent.parent / "protocol" / "chat-schema.yaml").read_text()
