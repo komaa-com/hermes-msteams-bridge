@@ -167,7 +167,7 @@ plugins:
       config:
         secret: ${MSTEAMS_CALL_SECRET}   # MUST match the secret StandIn gave you
         host: 127.0.0.1
-        port: 8443                         # voice WS StandIn dials: ws://host:port/voice/msteams/stream
+        port: 8443                         # voice WS StandIn dials: ws://host:port/msteams/calling
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
         meeting_recap: true                # optional: post minutes at call end
         # share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: future large-file path (file card itself needs only the bot creds)

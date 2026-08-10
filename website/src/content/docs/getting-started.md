@@ -7,7 +7,7 @@ This walks you from nothing to a working Teams voice call with your Hermes agent
 
 :::note[Two ways to connect]
 **StandIn Managed Bot (recommended)** - StandIn provides the Teams bot. Install StandIn from the
-Teams Store, connect this agent in the StandIn portal, paste the two secrets it gives you. **No
+Teams Store, connect this agent in the StandIn portal, paste the ONE connection secret it gives you. **No
 Azure bot registration, no App ID or client secret, and no separate Teams messaging setup** - this
 plugin hosts both the voice and chat lanes. See [Connecting to StandIn](/connecting-to-standin/).
 
@@ -105,22 +105,37 @@ plugins:
   entries:
     msteams_call:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # must match StandIn
-        host: 127.0.0.1
-        port: 8443
+        # ONE connection secret from the StandIn portal, covering calling AND messages.
+        # (Bring-your-own-bot deployments set `calling_secret` instead.)
+        secret: ${MSTEAMS_CALL_SECRET}
+        host: 127.0.0.1                 # both lanes; the tunnel terminates TLS and proxies here
+        calling_port: 8443
+        messages_port: 8444
+        # WITHOUT a caller policy the bridge accepts NOTHING: the allowlist IS the policy and an
+        # empty one denies every inbound call, so a setup that looks finished answers nothing.
+        allow_all: true                 # or list trusted callers under `allowlist`
         realtime:
           backend: openai            # or azure
           model: gpt-realtime
           voice: alloy
           api_key: ${OPENAI_API_KEY}
+platforms:
+  msteams_call:
+    enabled: true   # the gateway HOSTS the bridge. Without this the plugin loads and nothing listens.
 ```
 
 `~/.hermes/.env`:
 
 ```bash
-TEAMS_CALL_SHARED_SECRET=<the value from StandIn>
+MSTEAMS_CALL_SECRET=<the connection secret from StandIn>
 OPENAI_API_KEY=<your-openai-key>
 ```
+
+:::caution[Two switches, not one]
+`plugins.enabled` loads the plugin; `platforms.msteams_call.enabled` activates it under
+`hermes gateway run`. Setting only the first is the most common way to end up with a bridge that
+starts cleanly, reports no error, and never listens on either lane.
+:::
 
 The full key list is in the [Configuration Reference](/hermes-msteams-bridge/configuration-reference/).
 
@@ -146,7 +161,7 @@ hermes msteams-call serve --handler realtime
 You should see it bind:
 
 ```text
-[teams_call] bridge listening host=127.0.0.1 port=8443 path=/voice/msteams/stream/{call_id}
+[teams_call] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling/{call_id}
 ```
 
 Other handlers: `--handler streaming` (STT→agent→TTS, needs `ffmpeg`),

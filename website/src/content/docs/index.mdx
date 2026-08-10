@@ -4,7 +4,7 @@ description: "Microsoft Teams voice and video for a Hermes AI agent, connected t
 ---
 
 Welcome! **`hermes-msteams-bridge`** (PyPI: `hermes-msteams-bridge`, import
-package `hermes_msteams_bridge`, Hermes plugin name `teams_call`) adds **Microsoft
+package `hermes_msteams_bridge`, Hermes plugin name `msteams_call`) adds **Microsoft
 Teams voice and video** to a [Hermes](https://hermes-agent.nousresearch.com/docs)
 AI agent.
 
@@ -39,7 +39,7 @@ Teams media stack yourself.
 flowchart LR
     Teams["Teams call"]
     Bridge["StandIn media bridge<br/>(hosted, joins the meeting)"]
-    Plugin["teams_call plugin (in Hermes)<br/>the local WS server + the call brain"]
+    Plugin["msteams_call plugin (in Hermes)<br/>the local WS server + the call brain"]
     Agent["the Hermes agent<br/>(real work, tools)"]
     Teams <--> Bridge
     Bridge -->|HMAC WebSocket| Plugin

@@ -13,7 +13,7 @@ model, the three tiers, and how the shared secret works.
 - **The plugin is a local WebSocket server.** When you run
   `hermes msteams-call serve`, it binds `127.0.0.1:8443` by default and waits.
 - **The StandIn media bridge is the client.** For each Teams call it opens **one
-  WebSocket** to `/voice/msteams/stream/{callId}` on your server.
+  WebSocket** to `/msteams/calling/{callId}` on your server.
 - **Authentication is HMAC over a shared secret.** Both sides hold the same secret.
   On the WebSocket upgrade, StandIn sends two headers whose signature is
   `HMAC-SHA256(shared_secret, "{timestampMs}.{callId}")`. The plugin verifies it

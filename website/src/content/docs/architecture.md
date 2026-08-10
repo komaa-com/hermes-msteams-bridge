@@ -21,7 +21,7 @@ flowchart TD
     Provider["realtime provider WS<br/>OpenAI / Azure Realtime<br/>24 kHz speech-to-speech"]
     Agent["the Hermes agent<br/>tools, consult/task, minutes, images"]
     Teams <-->|Teams media| Bridge
-    Bridge -->|"HMAC WebSocket, one per call<br/>ws://127.0.0.1:8443/voice/msteams/stream/{callId}"| Plugin
+    Bridge -->|"HMAC WebSocket, one per call<br/>ws://127.0.0.1:8443/msteams/calling/{callId}"| Plugin
     Plugin --> Provider
     Plugin --> Agent
 ```

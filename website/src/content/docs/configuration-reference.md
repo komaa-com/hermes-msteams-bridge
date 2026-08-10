@@ -26,9 +26,12 @@ plugins:
   entries:
     msteams_call:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}
+        # ONE secret from the StandIn portal, covering calling AND messages. `shared_secret` is the
+        # per-lane CALLING override, for BYO deployments and split-key setups - not the starting point.
+        secret: ${MSTEAMS_CALL_SECRET}
         host: 127.0.0.1
-        port: 8443
+        calling_port: 8443
+        messages_port: 8444
         # ...bridge keys below...
         realtime:
           # ...realtime keys below...
@@ -42,11 +45,13 @@ There is no separate enable flag.
 
 | Setting | Env | Default | What it does |
 |---|---|---|---|
-| `messages_secret` | `TEAMS_CALL_CHAT_SECRET` | - | The connection's CHAT key from the StandIn portal. Separate from `shared_secret` (voice) on purpose: neither key can sign for the other, and they rotate independently. |
+| `secret` | `MSTEAMS_CALL_SECRET` | - | **The connection secret**, covering BOTH lanes. This is the one value the StandIn portal gives you. |
+| `calling_secret` | `MSTEAMS_CALL_CALLING_SECRET` | falls back to `secret` | Per-lane override for CALLING only. `shared_secret` is the older name for it. |
+| `messages_secret` | `MSTEAMS_CALL_MESSAGES_SECRET` | falls back to `secret` | Per-lane override for MESSAGES only. Set both per-lane keys for a split-key deployment, where neither key can sign for the other and they rotate independently. |
 | `messages_port` | `TEAMS_CALL_MANAGED_BOT_PORT` | `8444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (8443). |
-| `messages_path` | `TEAMS_CALL_MANAGED_BOT_PATH` | `/managed/chat` | Path the gateway posts to. |
+| `messages_path` | `TEAMS_CALL_MANAGED_BOT_PATH` | `/msteams/messages` | Path the gateway posts to. |
 | `gateway_reply_endpoint` | `TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL` | StandIn's `/api/chat/reply` | Where replies are posted back. |
-| `host` | `TEAMS_CALL_HOST` | `0.0.0.0` | Shared with the voice lane. Defaults to all interfaces because the gateway must reach it; set it to your tailnet/VPN address (or firewall the port) if you reach the agent privately. |
+| `host` | `TEAMS_CALL_HOST` | `127.0.0.1` | Shared with the voice lane - one machine, one interface. Loopback by default: the documented posture is a tunnel that terminates TLS publicly and proxies to loopback, so no port is exposed on your LAN. Set it to your tailnet/VPN address if the gateway reaches the agent directly. |
 
 One agent instance serves ONE StandIn connection - the chat secret belongs to a single tenant
 binding. Run a second instance for a second organization; never share a secret across tenants.
@@ -57,8 +62,8 @@ binding. Run a second instance for a second organization; never share a secret a
 |---|---|---|---|
 | `shared_secret` | `TEAMS_CALL_SHARED_SECRET` | `""` (unset) | HMAC secret shared with StandIn. **Required** - with no secret the bridge won't start. Must equal the value paired in StandIn. |
 | `host` | `TEAMS_CALL_HOST` | `127.0.0.1` | Bind address for the local WebSocket server. Non-loopback binds are warned about (they expose the secret). |
-| `port` | `TEAMS_CALL_PORT` | `8443` | Bind port. StandIn dials `ws://host:port/voice/msteams/stream/{callId}`. |
-| `path` | *(config only)* | `/voice/msteams/stream` | URL path prefix StandIn connects to. Rarely changed. |
+| `port` | `TEAMS_CALL_PORT` | `8443` | Bind port. StandIn dials `ws://host:port/msteams/calling/{callId}`. |
+| `path` | *(config only)* | `/msteams/calling` | URL path prefix StandIn connects to. Rarely changed. |
 | `hmac_window_ms` | `TEAMS_CALL_HMAC_WINDOW_MS` | `60000` | Clock-skew / replay window for the HMAC handshake, in milliseconds (±60 s). |
 | `max_call_duration_s` | `TEAMS_CALL_MAX_CALL_DURATION_S` | `0.0` | Hard wall-clock cap on a single call, in seconds. `0` = unlimited. A wedged/never-ending call is torn down once exceeded. |
 | `require_recording_status` | `TEAMS_CALL_REQUIRE_RECORDING_STATUS` | `true` | Gate all media processing until Teams recording is `active`. Recommended on for compliance. |

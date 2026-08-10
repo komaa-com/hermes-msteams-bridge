@@ -17,7 +17,7 @@ gracefully**, so older and newer peers interoperate.
 For each Teams call, StandIn opens **one WebSocket** to:
 
 ```text
-ws://<host>:<port>/voice/msteams/stream/{callId}
+ws://<host>:<port>/msteams/calling/{callId}
 ```
 
 `{callId}` in the URL is authenticated by the HMAC headers and later
@@ -264,7 +264,7 @@ X-StandIn-Signature: HMAC-SHA256(shared_secret, "{ts}.{callId}")
 ```
 
 - **Path**: under the stream prefix (default
-  `/voice/msteams/stream/outcome/{callId}`), because tunnels forward only that
+  `/msteams/calling/outcome/{callId}`), because tunnels forward only that
   prefix. The `callId` is the one returned when the call was placed.
 - **Auth**: the same HMAC contract as the WebSocket upgrade, including the
   single-use replay guard - a retry must re-sign with a fresh timestamp.

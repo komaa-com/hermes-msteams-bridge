@@ -16,10 +16,10 @@ this repo; the hosted StandIn media bridge handles the Teams media so these feat
   (`show_file`, `show_web_page`, `walkthrough`, progress panel,
   `set_call_language`) are realtime-mode features; streaming mode covers
   dialogue, vision auto-attach, and minutes.
-- **Gateway-resident mode (phase 2b)** - enable the `teams_call` platform in
+- **Gateway-resident mode (phase 2b)** - enable the `msteams_call` platform in
   the gateway and `hermes gateway run` hosts the voice bridge itself: one
   process, streaming utterances become real gateway agent turns (sessions,
-  authorization, approvals), and cron jobs can `deliver=teams_call` - the bot
+  authorization, approvals), and cron jobs can `deliver=msteams_call` - the bot
   calls you and speaks the result. `hermes teams-call serve` remains the
   standalone fallback.
 - **Barge-in** - the caller can interrupt the bot mid-reply; playback is flushed

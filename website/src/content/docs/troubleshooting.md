@@ -24,7 +24,7 @@ it prints the resolved host/port/path and whether a shared secret is configured.
 
 ## The plugin isn't loading
 
-**Symptom:** `teams_call` doesn't appear in `hermes plugins list`, or
+**Symptom:** `msteams_call` doesn't appear in `hermes plugins list`, or
 `hermes teams-call …` is an unknown command.
 
 Two independent requirements - **both** must hold:
@@ -37,10 +37,10 @@ Two independent requirements - **both** must hold:
    If that fails, reinstall targeting the Hermes interpreter (see
    [Getting Started](/hermes-msteams-bridge/getting-started/#1-install-into-the-same-venv-as-hermes)).
 2. **Listed in `plugins.enabled`.** Entry-point plugins are opt-in. Add
-   `teams_call` to `plugins.enabled` in `~/.hermes/config.yaml`.
+   `msteams_call` to `plugins.enabled` in `~/.hermes/config.yaml`.
 
 :::caution[Pip plugins are enabled in config.yaml only]
-**`hermes plugins enable teams_call` does NOT work for pip-installed plugins** -
+**`hermes plugins enable msteams_call` does NOT work for pip-installed plugins** -
 it only sees bundled/user-dir plugins. Enable it in `config.yaml` instead.
 :::
 
@@ -113,7 +113,7 @@ If that fails, the plugin's server isn't running (or is bound to a different hos
 
 ## Still stuck?
 
-Run with info logging and watch the `[teams_call]` lines, then open an issue on
+Run with info logging and watch the `[msteams_call]` lines, then open an issue on
 [GitHub](https://github.com/komaa-com/hermes-msteams-bridge/issues) with the
 handler you used, the log around the failure, and your (secret-free) config. Hosted-
 service questions belong at [docs.komaa.com](https://docs.komaa.com).
