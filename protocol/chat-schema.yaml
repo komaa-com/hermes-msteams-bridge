@@ -209,3 +209,7 @@ types:
         optional: true
         nullable: true
         doc: "Agent-chosen key making a retried send safe. The gateway drops a duplicate (tenantId, conversationId, idempotencyKey) within the outbox retention window."
+      - name: systemNotice
+        type: bool
+        optional: true
+        doc: "CONTROL-PLANE notice (retire, connected, consent revoked) rather than an agent reply. The delivery worker rechecks the binding before every send so a reply accepted before a retire cannot land after it; a notice is the opposite - the retire notice exists to ANNOUNCE the retire, so that recheck dead-lettered it every time and nobody was told. Set only by the StandIn control plane on its own authenticated endpoint, never by an agent: the agent-facing reply route does not read it."
