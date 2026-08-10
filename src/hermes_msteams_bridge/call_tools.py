@@ -48,13 +48,51 @@ class CallToolRunner:
             if name == "call_me_back":
                 return await self._call_me_back(str(args.get("message", "")))
             if name == "post_meeting_minutes":
-                return await meeting.post_minutes(h._consult, h._meeting, h._thread_id)
+                return await meeting.post_minutes(
+                    h._consult, h._meeting, h._thread_id, deliver=self._managed_deliver()
+                )
             if name == "post_chat_message":
                 return await self._post_chat_message(str(args.get("text", "")))
         except Exception:  # noqa: BLE001 — a tool fault must not break the call
             logger.error("[teams_call] tool %s failed", name, exc_info=True)
             return "Sorry, that didn't work."
         return f"Unknown tool: {name}."
+
+    def _managed_context(self) -> dict[str, str]:
+        """{tenant_id, chat_secret, gateway_reply_url} on a managed call, empty otherwise.
+
+        The one place that answers "can I reach this conversation without the customer's own bot
+        credentials?". Recorded WITH a pending outbound call and passed to the minutes delivery, because
+        both of those outlive the call object that knows it."""
+        h = self._h
+        cfg = getattr(h, "_bridge", None)
+        tenant_id = getattr(h, "_tenant_id", None) or ""
+        chat_secret = getattr(cfg, "managed_chat_secret", "") if cfg else ""
+        reply_url = getattr(cfg, "managed_chat_gateway_reply_url", "") if cfg else ""
+        if not (tenant_id and chat_secret and reply_url):
+            return {}
+        return {"tenant_id": tenant_id, "chat_secret": chat_secret, "gateway_reply_url": reply_url}
+
+    def _managed_deliver(self):
+        """An async (conversation_id, text) -> bool posting through the gateway, or None on BYO/free.
+
+        Injected wherever the host's Teams sender would otherwise be used: that sender needs the
+        customer's own bot credentials, which a managed customer does not have, so every one of those
+        deliveries could only fail there."""
+        ctx = self._managed_context()
+        if not ctx:
+            return None
+
+        async def _deliver(conversation_id: str, text: str) -> bool:
+            return await managed_chat.post_message(
+                chat_secret=ctx["chat_secret"],
+                gateway_reply_url=ctx["gateway_reply_url"],
+                tenant_id=ctx["tenant_id"],
+                conversation_id=conversation_id,
+                text=text,
+            )
+
+        return _deliver
 
     async def _post_chat_message(self, text: str) -> str:
         """Post to the call's Teams chat through the gateway - the managed connection's own messages hop.
@@ -419,7 +457,12 @@ class CallToolRunner:
         call_id = result.get("callId")
         if not call_id:
             return "The call-back was accepted but I got no call id, so it may not ring."
-        _pending_set(call_id, message or "Here's what you asked for.", thread_id=h._thread_id or "")
+        _pending_set(
+            call_id,
+            message or "Here's what you asked for.",
+            thread_id=h._thread_id or "",
+            managed=self._managed_context() or None,
+        )
         return "Okay — I'll call you right back with that."
 
     async def _agent_task(self, query: str) -> str:
@@ -553,7 +596,8 @@ class CallToolRunner:
         if h._thread_id:
             from .meeting import _deliver_to_teams
 
-            if await _deliver_to_teams(h._thread_id, f"✅ {result}"):
+            deliver = self._managed_deliver() or _deliver_to_teams
+            if await deliver(h._thread_id, f"✅ {result}"):
                 job_complete(job_id)
                 return
         if h._bridge is None or caller is None or not caller.aad_id:
@@ -574,5 +618,5 @@ class CallToolRunner:
             return
         cid = res.get("callId")
         if cid:
-            _pending_set(cid, result, thread_id=h._thread_id or "")
+            _pending_set(cid, result, thread_id=h._thread_id or "", managed=self._managed_context() or None)
             job_complete(job_id)  # the pending store owns delivery from here

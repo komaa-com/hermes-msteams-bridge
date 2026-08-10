@@ -65,11 +65,29 @@ def _pending_prune() -> None:
                 pass
 
 
-def _pending_set(call_id: str, text: str, thread_id: str = "") -> None:
+def _hash_text(text: str) -> int:
+    """Stable across processes, unlike hash(): the sweeper runs in whichever process is up."""
+    import hashlib as _hashlib
+
+    return int(_hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16)
+
+
+def _pending_set(
+    call_id: str,
+    text: str,
+    thread_id: str = "",
+    managed: dict[str, str] | None = None,
+) -> None:
     """Register the message the outbound leg speaks on answer. ``thread_id``
     (when known) is the §3.7 fallback target: a call that never produces a
     session within the stale window gets its text posted to that chat instead
-    of expiring silently."""
+    of expiring silently.
+
+    ``managed`` carries {tenant_id, chat_secret, gateway_reply_url} on a StandIn managed connection.
+    Without it the fallback could only go through the host's Teams sender, which needs the customer's
+    own bot credentials - so on managed the "I tried to call you" message had nowhere to go and the
+    caller heard nothing at all about the failed call. It is recorded WITH the pending entry rather
+    than looked up later, because by the time an outcome arrives the call object is gone."""
     import json as _json
 
     _pending_prune()
@@ -77,7 +95,10 @@ def _pending_set(call_id: str, text: str, thread_id: str = "") -> None:
     if d is not None:
         try:
             tmp = d / f".{_safe_call_key(call_id)}.tmp"
-            tmp.write_text(_json.dumps({"text": text, "thread_id": thread_id}), encoding="utf-8")
+            tmp.write_text(
+                _json.dumps({"text": text, "thread_id": thread_id, "managed": managed or {}}),
+                encoding="utf-8",
+            )
             tmp.rename(d / f"{_safe_call_key(call_id)}.json")  # atomic publish
             return
         except OSError:
@@ -232,7 +253,7 @@ _STALE_AFTER_S = 180.0
 
 def scan_stale_pending(max_age_s: float = _STALE_AFTER_S) -> list[tuple[str, str, str]]:
     """Two-phase claim of no-answer entries older than ``max_age_s``:
-    rename to ``.fallback`` and return ``[(text, thread_id, claim_path)]`` —
+    rename to ``.fallback`` and return ``[(text, thread_id, claim_path, managed)]`` —
     the record dies only after the chat post succeeds (see
     :func:`deliver_stale_pending`), so a failed send keeps its retry."""
     import json as _json
@@ -260,7 +281,13 @@ def scan_stale_pending(max_age_s: float = _STALE_AFTER_S) -> list[tuple[str, str
                 continue
             claim = f.with_suffix(".fallback")
             f.rename(claim)
-            claimed.append((str(entry.get("text") or ""), thread_id, str(claim)))
+            managed = entry.get("managed")
+            claimed.append((
+                str(entry.get("text") or ""),
+                thread_id,
+                str(claim),
+                managed if isinstance(managed, dict) else {},
+            ))
         except (OSError, ValueError):
             continue
     return claimed
@@ -284,9 +311,9 @@ _OUTCOME_WORDING = {
 UNANSWERED_OUTCOMES = frozenset(_OUTCOME_WORDING)
 
 
-def claim_pending(call_id: str) -> tuple[str, str, str] | None:
+def claim_pending(call_id: str) -> tuple[str, str, str, dict[str, str]] | None:
     """Two-phase claim of THIS call's pending entry (no age gate): rename to
-    ``.fallback`` and return ``(text, thread_id, claim_path)``, or ``None``
+    ``.fallback`` and return ``(text, thread_id, claim_path, managed)``, or ``None``
     when no entry exists (already delivered, answered, or unknown call).
     ``claim_path`` is empty for the in-process fallback store (round 13:
     a pending entry there must still be reachable by the outcome path; the
@@ -301,14 +328,22 @@ def claim_pending(call_id: str) -> tuple[str, str, str] | None:
             entry = _json.loads(f.read_text(encoding="utf-8"))
             claim = f.with_suffix(".fallback")
             f.rename(claim)
-            return str(entry.get("text") or ""), str(entry.get("thread_id") or ""), str(claim)
+            managed = entry.get("managed")
+            return (
+                str(entry.get("text") or ""),
+                str(entry.get("thread_id") or ""),
+                str(claim),
+                managed if isinstance(managed, dict) else {},
+            )
         except (OSError, ValueError):
             pass  # not in the file store - check in-process below
     entry = _PENDING_OUTBOUND.pop(call_id, None)
     if entry is None:
         return None
     text, thread_id, _exp = entry
-    return str(text), str(thread_id), ""
+    # The in-process store predates the managed context and never carried one; a deployment small
+    # enough to be using it has no durable dir either, so there is nothing to migrate.
+    return str(text), str(thread_id), "", {}
 
 
 # A worker can classify an INSTANT failure (busy/declined/Graph error) and POST
@@ -349,7 +384,7 @@ async def deliver_outcome(
         claimed = claim_pending(call_id)
     if claimed is None:
         return {"ok": True, "ignored": True}
-    text, thread_id, claim_path = claimed
+    text, thread_id, claim_path, managed = claimed
     claim = _Path(claim_path) if claim_path else None  # None = in-process claim
     if not thread_id:
         if claim is not None:
@@ -357,8 +392,25 @@ async def deliver_outcome(
         logger.info("[teams_call] outcome %s for %s: no chat fallback target", outcome, call_id)
         return {"ok": True, "delivered": False}
     lead = _OUTCOME_WORDING.get(outcome, _OUTCOME_WORDING["failed"])
+    body = f"\U0001F4DE {lead} Here's what I had: {text}"
     try:
-        result = await send_teams_message(thread_id, f"\U0001F4DE {lead} Here's what I had: {text}")
+        # MANAGED first when the claim carries the context: send_teams_message goes through the host's
+        # Teams platform, which needs the customer's own bot credentials - a managed customer has none,
+        # so this fallback could only ever fail there and the caller heard nothing about the failed call.
+        if managed.get("tenant_id") and managed.get("chat_secret") and managed.get("gateway_reply_url"):
+            from . import managed_chat as _managed_chat
+
+            ok = await _managed_chat.post_message(
+                chat_secret=managed["chat_secret"],
+                gateway_reply_url=managed["gateway_reply_url"],
+                tenant_id=managed["tenant_id"],
+                conversation_id=thread_id,
+                text=body,
+                idempotency_key=f"outcome-{call_id}-{outcome}",
+            )
+            result = {"success": True} if ok else {"error": "managed gateway post failed"}
+        else:
+            result = await send_teams_message(thread_id, body)
     except Exception as exc:  # noqa: BLE001 — a raising sender must not strand the claim
         result = {"error": f"{type(exc).__name__}: {exc}"}
     try:
@@ -385,11 +437,25 @@ async def deliver_stale_pending() -> int:
     from pathlib import Path as _Path
 
     delivered = 0
-    for text, thread_id, claim_path in scan_stale_pending():
-        result = await send_teams_message(
-            thread_id,
-            f"\U0001F4DE I tried to call you but couldn't reach you. Here's what I had: {text}",
-        )
+    for text, thread_id, claim_path, managed in scan_stale_pending():
+        body = f"\U0001F4DE I tried to call you but couldn't reach you. Here's what I had: {text}"
+        # Same routing choice deliver_outcome makes, for the same reason: this is the SAFETY NET, so
+        # leaving it on the host sender would mean a managed customer is told about a failed call only
+        # when the worker happened to report an outcome, and never when it did not.
+        if managed.get("tenant_id") and managed.get("chat_secret") and managed.get("gateway_reply_url"):
+            from . import managed_chat as _managed_chat
+
+            ok = await _managed_chat.post_message(
+                chat_secret=managed["chat_secret"],
+                gateway_reply_url=managed["gateway_reply_url"],
+                tenant_id=managed["tenant_id"],
+                conversation_id=thread_id,
+                text=body,
+                idempotency_key=f"stale-{thread_id}-{abs(_hash_text(text)):08x}",
+            )
+            result = {"success": True} if ok else {"error": "managed gateway post failed"}
+        else:
+            result = await send_teams_message(thread_id, body)
         claim = _Path(claim_path)
         try:
             if result.get("success"):
