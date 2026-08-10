@@ -233,8 +233,35 @@ class BridgeServer:
         if not ok:
             logger.warning("[teams_call] outcome rejected call=%s: %s", call_id, reason)
             return web.Response(status=401, text="unauthorized")
+        raw = await request.read()
+        # v1 signs the callId alone, so the OUTCOME WORD - the only thing this request carries - rides
+        # unsigned. When the sender offers v2 it covers method, path and a hash of the body, and a
+        # present v2 MUST verify: falling back after a failed one would hand an attacker a downgrade by
+        # simply corrupting the header. Additive - an older worker sends no v2 and keeps working.
+        sig_v2 = (request.headers.get("X-StandIn-Signature-V2") or "").strip().lower()
+        if sig_v2:
+            import hashlib
+            import hmac as _hmac
+
+            ts_raw = (
+                request.headers.get(HEADER_TIMESTAMP)
+                or request.headers.get(LEGACY_HEADER_TIMESTAMP)
+                or ""
+            ).strip()
+            body_hash = hashlib.sha256(raw).hexdigest()
+            canonical = f"POST\n{request.path}\n{body_hash}"
+            expected = _hmac.new(
+                self.config.shared_secret.encode("utf-8"),
+                f"{ts_raw}.{canonical}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            if not _hmac.compare_digest(expected, sig_v2):
+                logger.warning("[teams_call] outcome rejected call=%s: body signature mismatch", call_id)
+                return web.Response(status=401, text="unauthorized")
         try:
-            body = await request.json()
+            import json as _json
+
+            body = _json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return web.Response(status=400, text="malformed JSON body")
         if not isinstance(body, dict):

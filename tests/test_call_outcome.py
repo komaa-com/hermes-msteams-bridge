@@ -293,3 +293,48 @@ def test_unknown_outcome_does_not_consume_the_pending_callback(pending, sent):
     assert result.get("ignored") is True
     assert sent == []                             # nothing said to the caller
     assert len(list(pending.iterdir())) == 1      # and the callback survives
+
+
+def _canonical_v2(path: str, body: bytes) -> str:
+    import hashlib
+
+    return f"POST\n{path}\n{hashlib.sha256(body).hexdigest()}"
+
+
+def test_outcome_route_verifies_the_body_signature_when_offered(pending, sent):
+    """v1 signs the callId alone, so the OUTCOME WORD - the only thing this request carries - rides
+    unsigned: a captured request could be rewritten from "declined" to "failed" in flight. When the
+    sender offers v2 it covers method, path and a hash of the body, and a present v2 must verify."""
+    import hashlib
+    import hmac as _hmac
+    import json as _json
+
+    ts = int(time.time() * 1000)
+
+    def v2(path: str, body: bytes) -> str:
+        return _hmac.new(
+            SECRET.encode(), f"{ts}.{_canonical_v2(path, body)}".encode(), hashlib.sha256
+        ).hexdigest()
+
+    async def scenario(http, base):
+        from urllib.parse import urlparse
+
+        good_body = _json.dumps({"outcome": "busy"}).encode()
+        good_path = urlparse(f"{base}/call-v2a").path
+        ok = await http.post(
+            f"{base}/call-v2a",
+            headers={**_signed_headers("call-v2a", ts=ts), "X-StandIn-Signature-V2": v2(good_path, good_body)},
+            data=good_body,
+        )
+        # Same v1 signature (it only covers the callId), body swapped underneath it.
+        bad_path = urlparse(f"{base}/call-v2b").path
+        tampered = await http.post(
+            f"{base}/call-v2b",
+            headers={**_signed_headers("call-v2b", ts=ts), "X-StandIn-Signature-V2": v2(bad_path, good_body)},
+            data=_json.dumps({"outcome": "failed"}).encode(),
+        )
+        return ok.status, tampered.status
+
+    ok, tampered = _run_server_scenario(scenario)
+    assert ok == 200
+    assert tampered == 401
