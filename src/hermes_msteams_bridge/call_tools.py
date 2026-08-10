@@ -74,11 +74,21 @@ class CallToolRunner:
         # only asserts it for managed calls. Say so plainly instead of failing silently mid-sentence.
         if not (tenant_id and chat_secret and reply_url):
             return "I can only post to the chat on a StandIn managed connection - this call is not on one."
+        # A 1:1 call has no chat thread of its own: the worker sends threadId=callId as a fallback, and
+        # Teams cannot resolve that as a conversation (the minutes tool fails the same way, with
+        # "Could not resolve <callId> on teams"). A MEETING call does have one - "19:meeting_...@thread.v2".
+        # Posting to a call id would be a silent no-op dressed up as success, so say what is true.
+        conversation_id = h._thread_id or ""
+        if not conversation_id.startswith("19:"):
+            return (
+                "I can only post to the chat from a meeting call - a 1:1 call has no Teams chat thread "
+                "to post into. Ask me in our chat instead, or start this from a meeting."
+            )
         ok = await managed_chat.post_message(
             chat_secret=chat_secret,
             gateway_reply_url=reply_url,
             tenant_id=tenant_id,
-            conversation_id=h._thread_id,
+            conversation_id=conversation_id,
             text=text,
             # Scoped to the call AND the content, so a retried tool call does not double-post while two
             # genuinely different posts in one call both go out.
