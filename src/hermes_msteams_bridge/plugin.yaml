@@ -1,5 +1,5 @@
 name: msteams_call
-version: 0.4.0
+version: 0.5.0
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
   HMAC-authenticated WebSocket that the hosted StandIn media bridge dials into,

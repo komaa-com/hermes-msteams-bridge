@@ -74,7 +74,10 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
     except Exception:  # noqa: BLE001 — status must never crash on bad config
         hermes_cfg = {}
     enabled = (hermes_cfg.get("plugins") or {}).get("enabled") or []
-    plat = (hermes_cfg.get("platforms") or {}).get("teams_call") or {}
+    # Either name: the platform is registered as msteams_call with teams_call kept as an alias, so a
+    # config written against the published 0.4.0 must not report platform_enabled:false.
+    _plats = hermes_cfg.get("platforms") or {}
+    plat = (_plats.get("msteams_call") or _plats.get("teams_call") or {}) if isinstance(_plats, dict) else {}
     return json.dumps(
         {
             # Honest verdict (round 8): unconfigured or missing surfaces is

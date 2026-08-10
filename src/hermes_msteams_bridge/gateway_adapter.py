@@ -168,7 +168,7 @@ def get_adapter_class() -> Any:
         """Thin shell: VoiceBridgeService lifecycle + voice delivery."""
 
         def __init__(self, config: Any) -> None:
-            super().__init__(config, Platform("teams_call"))
+            super().__init__(config, Platform(PLATFORM_NAME))
             self._service = None
             self._managed_chat = None
 
@@ -313,11 +313,29 @@ def _handler_factory(cfg: Any, adapter: Any):
     return factory
 
 
+#: The platform name the portal, the installer and the docs all write. Must match the plugin entry point.
+PLATFORM_NAME = "msteams_call"
+#: The pre-rename name, still accepted so a config written against the published 0.4.0 keeps working.
+PLATFORM_NAME_LEGACY = "teams_call"
+
+
 def register_platform(ctx: Any) -> None:
-    """Register the gateway platform (best-effort: older hosts lack the API)."""
+    """Register the gateway platform (best-effort: older hosts lack the API).
+
+    Registered under BOTH names. The plugin entry point was renamed to ``msteams_call`` and the portal,
+    the installer and every doc write ``platforms.msteams_call.enabled: true`` - but the platform itself
+    was still registered as ``teams_call``, so that config loaded the plugin and then activated nothing.
+    Voice and managed chat both stayed silent, with no error to read: the host simply had no platform by
+    that name. The alias keeps configs written against the published 0.4.0 working.
+    """
+    for name in (PLATFORM_NAME, PLATFORM_NAME_LEGACY):
+        _register_one(ctx, name)
+
+
+def _register_one(ctx: Any, name: str) -> None:
     try:
         ctx.register_platform(
-            name="teams_call",
+            name=name,
             label="Teams Call (CVI)",
             adapter_factory=lambda cfg: get_adapter_class()(cfg),
             check_fn=_check_requirements,
@@ -336,7 +354,7 @@ def register_platform(ctx: Any) -> None:
             emoji="📞",
         )
     except (AttributeError, TypeError) as exc:
-        logger.info("[teams_call] platform registration unavailable on this host: %s", exc)
+        logger.info("[%s] platform registration unavailable on this host: %s", name, exc)
 
 
 def _check_requirements() -> bool:

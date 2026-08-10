@@ -1069,6 +1069,10 @@ def test_register_wires_teams_call_surfaces_only():
         pkg.register(_Ctx())
         cli_names = [n for kind, n in calls if kind == "cli"]
         assert cli_names == ["msteams-call"]  # platform-prefixed; no legacy CLI alias
+        # The portal, the installer and the docs all write platforms.msteams_call - registering only
+        # "teams_call" meant that config loaded the plugin and activated no platform at all, silently.
+        # Both names are registered; the legacy one keeps published 0.4.0 configs working.
+        assert ("platform", "msteams_call") in calls
         assert ("platform", "teams_call") in calls
         assert ("tool", "teams_call_status") in calls
     finally:
