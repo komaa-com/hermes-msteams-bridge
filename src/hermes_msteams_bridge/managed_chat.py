@@ -1,15 +1,20 @@
-"""StandIn managed chat mode (wire contract: ``protocol/chat-schema.yaml``).
+"""StandIn managed chat mode. Wire contract: ``protocol/chat-schema.yaml`` (published in this repo).
 
-On the managed tier the customer does not own a Teams bot: StandIn's gateway
-terminates Bot Framework and speaks the normalized chat protocol to this agent
-instead. This module is that endpoint - an aiohttp server accepting
-``InboundMessage`` signed with the binding's CHAT key (the bridge HMAC over
-``"{timestampMs}.{rawBody}"``, distinct from the voice handshake's
-``"{timestampMs}.{callId}"`` payload), ACKing immediately (the gateway's durable
-relay owns retry and ordering - agent latency must never sit on its HTTP
-response), consulting the Hermes agent async, and POSTing the reply back to the
-gateway's ``/api/chat/reply`` signed with the SAME key. The agent never holds a
-Bot Framework credential (D5).
+In managed mode you do not register a Teams bot of your own. StandIn runs the
+bot and speaks the normalized chat protocol to your agent, so your agent never
+holds a Bot Framework credential.
+
+This module is your side of that protocol:
+
+1. Serve an aiohttp endpoint. Requests are ``InboundMessage``, signed with your
+   connection's CHAT key using the bridge HMAC over ``"{timestampMs}.{rawBody}"``
+   - note this differs from the voice handshake, which signs
+   ``"{timestampMs}.{callId}"``.
+2. Verify the signature, then ACK immediately. The ACK is an acknowledgement of
+   RECEIPT, not of completion: agent latency must never sit on the HTTP
+   response, and StandIn handles retry and ordering from there.
+3. Consult the agent asynchronously, then POST the reply to the configured
+   reply URL, signed with the SAME key.
 
 The voice WebSocket is unchanged by managed mode; chat is a new lane.
 """
@@ -38,8 +43,12 @@ HEADER_SIGNATURE = "X-StandIn-Signature"
 
 
 def compute_signature(secret: str, timestamp: str, body: str) -> str:
-    """Lowercase-hex HMAC-SHA256 over ``"{timestamp}.{body}"`` - the bridge HMAC
-    (KAT-shared with @standin/bridge-hmac, the gateway, and the media bridge)."""
+    """Lowercase-hex HMAC-SHA256 over ``"{timestamp}.{body}"`` - the bridge HMAC.
+
+    The construction is specified in ``protocol/chat-schema.yaml`` and pinned by
+    known-answer tests in this repo, so an independent implementation can be
+    checked against the same vectors.
+    """
     payload = f"{timestamp}.{body}".encode("utf-8")
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
@@ -340,8 +349,9 @@ class ManagedChatServer:
         except ValueError as exc:
             return web.json_response({"error": str(exc)}, status=400)
 
-        # ACK first; the gateway's durable relay owns retry between US and IT. A redelivered
-        # activity ACKs and does nothing - the first delivery's turn is running (or queued).
+        # ACK first, then work: the ACK means "received", not "answered". A redelivered activity
+        # ACKs and does nothing, because the first delivery's turn is already running or queued -
+        # so a retry can never start the same turn twice.
         if self._seen.mark_first(f"{message.tenant_id}:{message.conversation_id}:{message.activity_id}"):
             self._enqueue_turn(message)
         return web.json_response({"ok": True})

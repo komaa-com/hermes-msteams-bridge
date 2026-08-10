@@ -35,7 +35,7 @@ class VisionBudget:
 
     def try_consume_ambient(self, now: float | None = None) -> bool:
         """Record an AMBIENT vision use — refuses once only the explicit
-        reserve is left, so background frames can't starve look_at_screen (D2)."""
+        reserve is left, so background frames can't starve look_at_screen."""
         if self.max_per_minute <= 0:
             return True
         now = time.monotonic() if now is None else now

@@ -203,7 +203,7 @@ class CallToolRunner:
             if not paths:
                 return "I couldn't create that image."
             # Paced slideshow — fullscreen (content must be legible; overlay is
-            # a small PiP inset for thumbnails only) and barge-in aware (D3): a
+            # a small PiP inset for thumbnails only) and barge-in aware: a
             # caller interruption bumps the handler's turn id, which stops the
             # deck instead of pushing the next slide over them.
             turn0 = getattr(self._h, "_turn_id", None)

@@ -354,7 +354,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
                     if frame is None or frame.ts == self._ambient_last_ts.get(src):
                         continue
                     if not self._vision_budget.try_consume_ambient():
-                        break  # ambient share spent; explicit reserve stays (D2)
+                        break  # ambient share spent; explicit reserve stays
                     self._ambient_last_ts[src] = frame.ts
                     # D1: ship the attribution the frame already carries, not
                     # bare pixels — the model learns WHOSE surface changed.
@@ -630,7 +630,7 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
         frame = self._vision.latest()
         if frame is None or frame.ts == self._last_frame_ts:
             return ""
-        # Auto-attach is ambient use — it must not starve an explicit look (D2).
+        # Auto-attach is ambient use — it must not starve an explicit look.
         if not self._vision_budget.try_consume_ambient():
             return ""
         self._last_frame_ts = frame.ts

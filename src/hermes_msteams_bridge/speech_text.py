@@ -1,4 +1,4 @@
-"""Text cleanup before speech synthesis (D8).
+"""Text cleanup before speech synthesis.
 
 Agent replies arrive as chat Markdown; speaking them raw reads the syntax
 aloud ("asterisk asterisk bold asterisk asterisk"). Hermes's own voice
