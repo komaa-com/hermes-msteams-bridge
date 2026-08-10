@@ -269,8 +269,11 @@ X-StandIn-Signature: HMAC-SHA256(shared_secret, "{ts}.{callId}")
 - **Auth**: the same HMAC contract as the WebSocket upgrade, including the
   single-use replay guard - a retry must re-sign with a fresh timestamp.
 - **Body**: `outcome` is one of `answered`, `no-answer`, `declined`, `busy`,
-  `failed` (unknown values are treated as `failed`). `answered` is a no-op:
-  the WebSocket session delivers the spoken message.
+  `failed`. `answered` is a no-op: the WebSocket session delivers the spoken
+  message. An **unknown** value is IGNORED, not treated as a failure - it used
+  to consume the pending callback, so a typo (or a word a future worker adds)
+  destroyed a callback that was still valid and told the caller their call had
+  failed when it had not. The 180-second stale timer remains the safety net.
 - **Responses**: `200` with `{"ok": true, "delivered": bool}` or
   `{"ok": true, "ignored": true}` (unknown or already-handled callId -
   idempotent); `401` on a bad signature or replay; `400` on a malformed body.
