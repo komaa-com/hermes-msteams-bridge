@@ -79,7 +79,7 @@ types:
       - name: isGuest
         type: bool
         default: false
-        doc: "True when the sender is a B2B guest in the bound tenant. Guests relay like members - the AGENT decides its own policy; they live in the bound tenant's directory."
+        doc: "True when the sender is a B2B guest in the bound tenant. Guests relay like members - the AGENT decides its own policy; they live in the bound tenant's directory. Read from the conversation roster and FAIL-OPEN: false also means the gateway could not read the roster, so treat it as 'not known to be a guest' rather than 'known to be a member'."
       - name: isLinkedOwner
         type: bool
         default: false
