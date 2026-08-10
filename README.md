@@ -125,6 +125,18 @@ so enable it in config:
 plugins:
   enabled:
     - msteams_call
+  entries:
+    msteams_call:
+      config:
+        secret: ${MSTEAMS_CALL_SECRET}   # the StandIn connection secret - covers calling AND messages
+        host: 127.0.0.1                  # both lanes; the tunnel terminates TLS and proxies to loopback
+        # WITHOUT a caller policy the bridge accepts NOTHING: the allowlist IS the policy and an empty
+        # one denies every inbound call, so a setup that otherwise looks finished answers nothing.
+        # Name trusted callers here, or set allow_all: true to take whatever StandIn routes to you.
+        allow_all: true
+platforms:
+  msteams_call:
+    enabled: true                        # the gateway hosts the bridge; without this nothing listens
 ```
 
 Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):

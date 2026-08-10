@@ -324,11 +324,16 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
             or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
         ),
         # The chat lane binds the SAME host as voice unless told otherwise - one machine, one
-        # interface. Defaults to the voice host so "bind to the tailnet" is a single edit.
+        # interface. That was the documented intent and not what happened: the chain did not read
+        # TEAMS_CALL_HOST (the voice lane's env var) and fell back to 0.0.0.0, so a deployment that set
+        # only TEAMS_CALL_HOST - or nothing at all - got voice on loopback and the MESSAGES listener on
+        # every interface. Reading the voice var and defaulting to the voice default makes the
+        # inheritance real rather than described.
         "managed_chat_host": (
             _flat("host", "host")
             or _env("HOST")
-            or "0.0.0.0"
+            or plugin_env("TEAMS_CALL_HOST", "").strip()
+            or "127.0.0.1"
         ),
         "managed_chat_port": _coerce_int(
             extra.get("messages_port") or block.get("port") or _env("PORT"), 8444

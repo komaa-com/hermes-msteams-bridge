@@ -54,7 +54,6 @@ def test_unanswered_outcome_delivers_immediately(pending, sent):
     ("declined", "declined my call"),
     ("busy", "line was busy"),
     ("failed", "could not be completed"),
-    ("weird-new-state", "could not be completed"),  # unknown -> generic
 ])
 def test_outcome_specific_wording(pending, sent, outcome, phrase):
     csb._pending_set("call-2", "msg", thread_id="19:t@thread.v2")
@@ -277,3 +276,20 @@ def test_outcome_delivers_from_in_process_store(monkeypatch, sent):
     assert result == {"ok": True, "delivered": True}
     assert "memory message" in sent[0][1]
     assert csb._PENDING_OUTBOUND == {}  # consumed
+
+
+def test_unknown_outcome_does_not_consume_the_pending_callback(pending, sent):
+    """An outcome word we do not know must be IGNORED, not treated as a failure.
+
+    The endpoint accepts any non-empty string, and everything except "answered" used to claim the
+    pending record - so a typo, or an outcome a future worker adds, destroyed a callback that was still
+    valid and told the caller their call could not be completed when it had not failed. The 180s stale
+    timer is still the safety net for a real no-answer nobody told us about.
+    """
+    csb._pending_set("call-1", "your report is ready", thread_id="19:t@thread.v2")
+
+    result = asyncio.run(csb.deliver_outcome("call-1", "weird-new-state"))
+
+    assert result.get("ignored") is True
+    assert sent == []                             # nothing said to the caller
+    assert len(list(pending.iterdir())) == 1      # and the callback survives

@@ -47,6 +47,11 @@ documents = ["pypdfium2>=4.30", "pillow>=10"]
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
 msteams_call = "hermes_msteams_bridge"
+# Upgrade path for configs written against the published 0.4.0, which named this plugin `teams_call`.
+# `plugins.enabled` names the ENTRY-POINT key, so without this a 0.4.0 config does not load the package
+# at all on upgrade - the platform alias cannot help, because register() never runs. Same module, so
+# enabling either name activates the same plugin; the docs and the installer write msteams_call.
+teams_call = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]
 where = ["src"]

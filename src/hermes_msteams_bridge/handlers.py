@@ -342,7 +342,10 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             while True:
                 await asyncio.sleep(self._ambient_interval_s)
                 session = self._session
-                if self._rt is None or session is None or not session.recording_active:
+                # _recording_ok, not session.recording_active: this loop open-coded the check and so
+                # kept ambient vision recording-gated even where the operator turned the requirement
+                # off - the same class of bug as the greeting, in the one place it was not fixed.
+                if self._rt is None or session is None or not self._recording_ok(session):
                     continue
                 # Push each source (screen + camera) that changed since last time.
                 # The worker only emits scene-change frames, so a new ts == a new scene.
@@ -533,11 +536,21 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
         if not await self._begin_session(session, msg):  # state + allowlist + scope
             return
         await self._safe_expression(expression.NEUTRAL)
+        # Same fix realtime got, which streaming did not: with require_recording_status false, the
+        # recording-active transition may never arrive, and on_recording_status below was the ONLY
+        # place this handler ever greets. The call connected and the bot sat mute for its whole
+        # duration - the exact symptom the realtime fix was written for.
+        if self._greet_without_recording(session):
+            await self._greet_now()
 
     async def on_recording_status(self, session: CallSession, msg: protocol.RecordingStatus) -> None:
         await super().on_recording_status(session, msg)
         if not session.recording_active:
             return
+        await self._greet_now()
+
+    async def _greet_now(self) -> None:
+        """Speak the pending greeting plan, if there is one. One implementation for both triggers."""
         plan = self._greeting_plan()
         if plan is None:
             return

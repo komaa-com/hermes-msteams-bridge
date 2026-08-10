@@ -166,7 +166,16 @@ def teams_call_command(args) -> int:
                     return await consult.ask(query, timeout_s=280.0)
 
                 # Shared with the gateway-resident adapter so the two hosting paths cannot drift.
-                managed_chat = await start_managed_chat_if_configured(cfg, _respond)
+                #
+                # If the chat lane fails to start - a port already in use is the ordinary case - the
+                # VOICE service is already listening, and letting the exception escape here left it
+                # running inside a process that was on its way out: an orphaned listener holding the
+                # calling port, so the retry the operator immediately tries cannot bind either.
+                try:
+                    managed_chat = await start_managed_chat_if_configured(cfg, _respond)
+                except Exception:
+                    await service.stop()
+                    raise
             # Graceful shutdown: SIGTERM (AKS/Docker rolling deploys) and SIGINT
             # (Ctrl-C) set the stop event so server.stop() drains live calls -
             # closing each with a reason so per-call teardown runs and the

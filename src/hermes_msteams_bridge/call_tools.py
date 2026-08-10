@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib as _hashlib
 import logging
 from pathlib import Path
 
@@ -92,7 +93,14 @@ class CallToolRunner:
             text=text,
             # Scoped to the call AND the content, so a retried tool call does not double-post while two
             # genuinely different posts in one call both go out.
-            idempotency_key=f"call-{h._session.call_id if h._session else 'x'}-{abs(hash(text)) & 0xffffffff:08x}",
+            #
+            # sha256, NOT hash(): Python salts hash() per process (PYTHONHASHSEED), so the same text
+            # produced a different key after every restart - the one situation a retry actually spans.
+            # Matches the OpenClaw side, which has always hashed with sha256.
+            idempotency_key=(
+                f"call-{h._session.call_id if h._session else 'x'}-"
+                f"{_hashlib.sha256(text.encode('utf-8')).hexdigest()[:12]}"
+            ),
         )
         return (
             "I've posted that to the Teams chat."

@@ -214,6 +214,10 @@ async def post_message(
 
     body = json.dumps(
         {
+            # REQUIRED by chat-schema.yaml, and build_reply has always sent it - this path did not, so
+            # in-call and proactive posts were the one shape on the wire missing the version field the
+            # gateway uses to decide how to read them.
+            "schemaVersion": SCHEMA_VERSION,
             "tenantId": tenant_id,
             "conversationId": conversation_id,
             "text": text,
@@ -383,9 +387,15 @@ class ManagedChatServer:
     TURN_TIMEOUT_S = 300.0
 
     async def _process(self, message: InboundChat) -> None:
-        await self._post_reply(build_reply(message, "", "typing"))
+        # Typing is a COURTESY, so it must not sit in FRONT of the agent turn: awaiting it delayed every
+        # answer by up to the outbound timeout on a slow gateway. It is started here and runs while the
+        # agent thinks, then awaited before the reply goes out - which keeps the indicator ahead of the
+        # answer (a "typing..." that lands after the reply is worse than a slow one) at no real cost,
+        # because the agent turn is always the longer of the two.
+        typing = asyncio.create_task(self._post_reply(build_reply(message, "", "typing")))
         try:
             text = await asyncio.wait_for(self._respond(message), timeout=self.TURN_TIMEOUT_S)
+            await asyncio.gather(typing, return_exceptions=True)  # ordering: indicator before answer
             if text and text.strip():
                 await self._post_reply(build_reply(message, text))
             else:
@@ -403,6 +413,7 @@ class ManagedChatServer:
             raise
         except Exception:  # noqa: BLE001 - the user must hear SOMETHING
             logger.exception("managed chat: agent turn failed")
+            await asyncio.gather(typing, return_exceptions=True)  # same ordering on the failure path
             await self._post_reply(
                 build_reply(message, "Something went wrong answering that - please try again.", "error")
             )

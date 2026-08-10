@@ -334,6 +334,14 @@ async def deliver_outcome(
         # The WS session delivers the message; the pending entry is popped at
         # session.start. Nothing to do here.
         return {"ok": True, "ignored": True}
+    # Anything that is not a KNOWN failure outcome is ignored rather than treated as one. The endpoint
+    # accepts any non-empty word, and everything except "answered" used to fall through here and CLAIM
+    # the pending record - so a typo, or an outcome word a future worker adds, destroyed a callback that
+    # was still valid and sent the caller a "couldn't reach you" for a call that had not failed. The
+    # 180s stale timer remains the safety net for a genuine no-answer we were never told about.
+    if outcome not in UNANSWERED_OUTCOMES:
+        logger.info("[teams_call] ignoring unknown call outcome %r for call=%s", outcome, call_id)
+        return {"ok": True, "ignored": True, "reason": "unknown outcome"}
     claimed = claim_pending(call_id)
     deadline = time.monotonic() + max(0.0, grace_s)
     while claimed is None and time.monotonic() < deadline:
