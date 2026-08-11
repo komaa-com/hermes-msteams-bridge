@@ -327,7 +327,7 @@ class CallToolRunner:
             from .hermes_api import dispatch_tool_async
 
             asyncio.create_task(
-                dispatch_tool_async("browser_navigate", {"url": "about:blank", "task_id": task_id})
+                dispatch_tool_async("browser_navigate", {"url": "about:blank"}, task_id=task_id)
             )
             return "That page took too long to load."
         if result is None:
@@ -559,8 +559,11 @@ class CallToolRunner:
             return None  # no consult agent -> nothing of ours to watch
         try:
             result = _parse_tool_json(await asyncio.wait_for(
+                # task_id as a dispatch KWARG - in args the host ignores it and this captures the
+                # shared "default" session instead of the consult agent's browser, so "watch it
+                # work" silently showed the progress panel forever. See hermes_api.show_web_page.
                 dispatch_tool_async(
-                    "browser_vision", {"question": "Progress check.", "task_id": task_id}
+                    "browser_vision", {"question": "Progress check."}, task_id=task_id
                 ),
                 timeout=20.0,
             ))
