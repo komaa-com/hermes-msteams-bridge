@@ -195,8 +195,13 @@ def test_browser_frame_uses_consult_task_id_and_content_dedupe(tmp_path, monkeyp
     shot.write_bytes(b"\x89PNG\r\n\x1a\n" + b"frame-1")
     calls = []
 
-    async def fake_dispatch(name, args):
-        calls.append((name, args))
+    # The fake accepts **kw because that is the HOST's shape: `entry.handler(args, **kw)`, with
+    # task_id read from kw and NEVER from args. The previous fake took (name, args) only and the
+    # assertion checked args["task_id"] - green, while the real host ignored the value and every
+    # capture fell through to the shared "default" browser session. Assert the contract, not our
+    # own call shape.
+    async def fake_dispatch(name, args, **kw):
+        calls.append((name, args, kw))
         return json.dumps({"screenshot_path": str(shot)})
 
     import hermes_msteams_bridge.hermes_api as hermes_api
@@ -213,7 +218,9 @@ def test_browser_frame_uses_consult_task_id_and_content_dedupe(tmp_path, monkeyp
     first = asyncio.run(runner._grab_agent_browser_frame(""))
     assert first is not None
     frame, digest = first
-    assert calls[0][1]["task_id"] == "teams_call:consult:test"
+    name, args, kw = calls[0]
+    assert kw["task_id"] == "teams_call:consult:test"
+    assert "task_id" not in args  # in args the host silently ignores it
     # Same content, fresh call: content-based dedupe must suppress it even
     # though Hermes would have written a new screenshot file.
     second = asyncio.run(runner._grab_agent_browser_frame(digest))

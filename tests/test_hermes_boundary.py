@@ -165,6 +165,24 @@ def test_plugin_llm_contract_on_host():
         assert fld in PluginLlmImageInput.__dataclass_fields__
 
 
+@host_only
+def test_browser_tool_task_id_contract_on_host():
+    """The host's browser handlers read task_id from the dispatch KWARGS, never from args.
+
+    Every `dispatch_tool_async(..., task_id=...)` in this plugin relies on that. When task_id rode
+    inside args instead, the host accepted and ignored it, and per-call browser isolation silently
+    did not exist - the same green-test-over-unverified-contract failure as the round-8 assertion
+    this replaces. If this test ever fails, the host moved the parameter: revisit every browser
+    dispatch in call_tools.py and hermes_api.py together.
+    """
+    import inspect
+
+    from tools import browser_tool
+
+    src = inspect.getsource(browser_tool)
+    assert 'kw.get("task_id")' in src
+
+
 # ── Positive paths via fakes (run everywhere) ────────────────────────────────
 
 

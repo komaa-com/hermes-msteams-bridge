@@ -316,17 +316,27 @@ async def browser_page_screenshot(url: str, task_id: str = "") -> tuple[str, str
     # Call-scoped session id: without one the browser tools share the "default"
     # session, so concurrent calls would overwrite each other's navigation and
     # could hand a caller someone else's screenshot (or cookies).
-    args = {"url": url}
-    if task_id:
-        args["task_id"] = task_id
-    nav = _parse_tool_json(await dispatch_tool_async("browser_navigate", args))
+    #
+    # It MUST travel as a dispatch KWARG, not inside args. The host's browser handlers are
+    # `lambda args, **kw: ...task_id=kw.get("task_id")` - they never read args["task_id"], so the
+    # in-args form was accepted, ignored, and every call fell through to the shared "default"
+    # session. The isolation this comment promises did not exist; the round-8 test passed because
+    # it asserted OUR call shape instead of the host's contract. Same failure mode, to the letter,
+    # as the msteams-call images param: a green test over an unverified host API.
+    nav = _parse_tool_json(
+        await dispatch_tool_async("browser_navigate", {"url": url}, task_id=task_id)
+        if task_id
+        else await dispatch_tool_async("browser_navigate", {"url": url})
+    )
     if nav.get("error"):
         logger.warning("[teams_call] browser_navigate failed: %s", nav.get("error"))
         return None
     vargs: dict = {"question": "Has the page rendered completely?"}
-    if task_id:
-        vargs["task_id"] = task_id
-    vision = _parse_tool_json(await dispatch_tool_async("browser_vision", vargs))
+    vision = _parse_tool_json(
+        await dispatch_tool_async("browser_vision", vargs, task_id=task_id)
+        if task_id
+        else await dispatch_tool_async("browser_vision", vargs)
+    )
     # Two shapes: the plain JSON result carries screenshot_path at the top
     # level; the native-vision multimodal envelope carries it under meta.
     path = vision.get("screenshot_path") or (vision.get("meta") or {}).get("screenshot_path") or ""

@@ -846,7 +846,10 @@ def test_progress_loop_shows_browser_frames_when_opted_in(monkeypatch, tmp_path)
 
     async def fake_dispatch(name, args, **kw):
         assert name == "browser_vision"
-        assert args["task_id"] == "teams_call:consult:test"  # round 8: pinned session
+        # The host reads task_id from the dispatch kwargs, never from args - asserting it in
+        # args is how the broken in-args form stayed green while isolation silently failed.
+        assert kw["task_id"] == "teams_call:consult:test"
+        assert "task_id" not in args
         import json as _json
 
         return _json.dumps({"answer": "ok", "screenshot_path": str(shot)})
