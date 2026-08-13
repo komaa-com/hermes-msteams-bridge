@@ -222,6 +222,11 @@ def decode(raw: str | bytes) -> InboundMessage:
 # ── Outbound builders (gateway -> worker) ────────────────────────────────────
 
 
+def session_end(reason: str) -> dict[str, Any]:
+    """Teardown NOTICE the plugin sends before closing (``time-limit``, ``agent-disconnected``, ``agent-unavailable``). Advisory: the socket close that follows is what ends the call, but this carries the only answer to why."""
+    return {"type": TYPE_SESSION_END, "reason": reason}
+
+
 def audio_frame(seq: int, timestamp_ms: int, payload_base64: str) -> dict[str, Any]:
     """Outbound TTS / realtime audio chunk (PCM 16 kHz, base64, 20 ms)."""
     return {
