@@ -1,6 +1,6 @@
-"""Agent-facing tools for the teams_call bridge.
+"""Agent-facing tools for msteams_bridge.
 
-Two global agent tools: the read-only ``teams_call_status`` probe and
+Two global agent tools: the read-only ``msteams_bridge_status`` probe and
 ``call_user`` — chat-to-call (§3.6): a user asks in Teams chat, the agent
 places a voice call and speaks the message on answer. The realtime call tools
 (``look_at_screen``, ``show_to_caller``, ``post_meeting_minutes``) are surfaced
@@ -17,8 +17,8 @@ from typing import Any, Dict
 
 from .config import plugin_env, resolve_config
 
-TEAMS_CALL_STATUS_SCHEMA: Dict[str, Any] = {
-    "name": "teams_call_status",
+MSTEAMS_BRIDGE_STATUS_SCHEMA: Dict[str, Any] = {
+    "name": "msteams_bridge_status",
     "description": (
         "Report the Microsoft Teams voice/video (CVI) bridge configuration and "
         "readiness: bind host/port, whether a shared secret is configured, "
@@ -60,7 +60,7 @@ def _managed_chat_ok(cfg) -> bool:
     return _port_active(host, cfg.managed_chat_port)
 
 
-def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
+def handle_msteams_bridge_status(args: dict | None = None, **_kwargs: Any) -> str:
     """Status probe. Hermes dispatches ``handler(args, **kwargs)``, so the
     positional args dict must be accepted even though this tool takes none."""
     from .hermes_api import hermes_version_note, load_hermes_config, probe_boundaries
@@ -74,10 +74,8 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
     except Exception:  # noqa: BLE001 — status must never crash on bad config
         hermes_cfg = {}
     enabled = (hermes_cfg.get("plugins") or {}).get("enabled") or []
-    # Either name: the platform is registered as msteams_call with teams_call kept as an alias, so a
-    # config written against the published 0.4.0 must not report platform_enabled:false.
     _plats = hermes_cfg.get("platforms") or {}
-    plat = (_plats.get("msteams_call") or _plats.get("teams_call") or {}) if isinstance(_plats, dict) else {}
+    plat = (_plats.get("msteams_bridge") or {}) if isinstance(_plats, dict) else {}
     return json.dumps(
         {
             # Honest verdict (round 8): unconfigured or missing surfaces is
@@ -108,12 +106,7 @@ def handle_teams_call_status(args: dict | None = None, **_kwargs: Any) -> str:
                     else False
                 ),
             },
-            # The only published entry point is msteams_call - checking the retired name reported
-            # plugin_enabled:false for every VALID activation, i.e. the status tool told healthy
-            # deployments they were misconfigured.
-            "plugin_enabled": (
-                any(k in enabled for k in ("msteams_call", "teams_call")) if isinstance(enabled, list) else False
-            ),
+            "plugin_enabled": ("msteams_bridge" in enabled) if isinstance(enabled, list) else False,
             "platform_enabled": bool(plat.get("enabled")) if isinstance(plat, dict) else False,
             "deps_available": deps,
             "hermes": hermes_version_note(),
@@ -211,21 +204,21 @@ def handle_call_user(args: dict | None = None, **kwargs: Any) -> str:
 
     cfg = resolve_config()
     if not cfg.configured:
-        return json.dumps({"error": "teams_call is not configured (no shared secret)"})
+        return json.dumps({"error": "msteams_bridge is not configured (no shared secret)"})
     # STRICTER than inbound (review round 5): outbound dialing requires an
     # EXPLICIT allowlist entry — allow_all covers who may call the bot, never
     # who the bot may dial. Otherwise a chat user (or a prompt injection in
     # any chat surface) turns the bot into a model-controlled dialer.
     if not cfg.allowlist or (aad_id or "").strip().lower() not in cfg.allowlist:
         return json.dumps(
-            {"error": "outbound calls require the callee on an explicit teams_call allowlist"}
+            {"error": "outbound calls require the callee on an explicit msteams_bridge allowlist"}
         )
     if not _call_user_rate_ok():
         return json.dumps({"error": "outbound call rate limit reached; try again later"})
     # Tenant comes from operator config only — never from the model.
     tenant = cfg.tenant_id
     if not tenant:
-        return json.dumps({"error": "no tenant configured (set TEAMS_CALL_TENANT_ID)"})
+        return json.dumps({"error": "no tenant configured (set MSTEAMS_BRIDGE_TENANT_ID)"})
 
     from .call_session_base import _pending_set
     from .outbound import OutboundError, place_call
@@ -256,7 +249,7 @@ def handle_call_user(args: dict | None = None, **kwargs: Any) -> str:
     fallback_thread = chat_id if platform == "teams" else ""
     _pending_set(call_id, message, thread_id=fallback_thread)
     logger.info(
-        "[teams_call] AUDIT call_user: callee=%s callId=%s fallback_thread=%s",
+        "[msteams_bridge] AUDIT call_user: callee=%s callId=%s fallback_thread=%s",
         aad_id, call_id, "yes" if fallback_thread else "no",
     )
     return json.dumps(

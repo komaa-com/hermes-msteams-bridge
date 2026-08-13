@@ -24,9 +24,9 @@ are **different WebSocket connections**, so the pending result is correlated by
 
 | Key | Env var | Default | Meaning |
 |---|---|---|---|
-| `worker_base_url` | `TEAMS_CALL_WORKER_BASE_URL` | `http://127.0.0.1:9440` | The loopback HTTP endpoint StandIn exposes for place-call. |
-| `allow_remote_worker` | `TEAMS_CALL_ALLOW_REMOTE_WORKER` | `false` | Permit a **non-loopback** `worker_base_url`. Off by default. |
-| `tenant_id` | `TEAMS_CALL_TENANT_ID` (falls back to `TEAMS_TENANT_ID`) | `""` | Default Azure AD tenant for the outbound call. |
+| `worker_base_url` | `MSTEAMS_BRIDGE_WORKER_BASE_URL` | `http://127.0.0.1:9440` | The loopback HTTP endpoint StandIn exposes for place-call. |
+| `allow_remote_worker` | `MSTEAMS_BRIDGE_ALLOW_REMOTE_WORKER` | `false` | Permit a **non-loopback** `worker_base_url`. Off by default. |
+| `tenant_id` | `MSTEAMS_BRIDGE_TENANT_ID` (falls back to `TEAMS_TENANT_ID`) | `""` | Default Azure AD tenant for the outbound call. |
 
 ## The outbound HMAC scheme
 

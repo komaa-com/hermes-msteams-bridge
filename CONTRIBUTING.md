@@ -48,13 +48,13 @@ tests alongside any behavior change.
 ### Optional: running the bridge locally
 
 ```bash
-export TEAMS_CALL_SHARED_SECRET=dev-secret
-hermes teams-call serve --handler echo    # or: logging | realtime | streaming
+export MSTEAMS_BRIDGE_SHARED_SECRET=dev-secret
+hermes msteams-bridge serve --handler echo    # or: logging | realtime | streaming
 ```
 
 `echo` and `logging` need no provider key and are the quickest way to exercise the
 handshake and lifecycle. `realtime` needs an OpenAI/Azure realtime key; `streaming`
-needs `ffmpeg` on PATH. `hermes teams-call status` prints resolved config and
+needs `ffmpeg` on PATH. `hermes msteams-bridge status` prints resolved config and
 readiness.
 
 ## Branch + PR conventions
@@ -74,17 +74,17 @@ group declared in `pyproject.toml`:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-teams_call = "hermes_msteams_bridge"
+msteams_bridge = "hermes_msteams_bridge"
 ```
 
-The **key** (`teams_call`) is the plugin name shown in `hermes plugins list` and
+The **key** (`msteams_bridge`) is the plugin name shown in `hermes plugins list` and
 used in `plugins.enabled`. The **value** (`hermes_msteams_bridge`) is the import
 package whose `register(ctx)` Hermes calls once, when the plugin is enabled.
-`register(ctx)` wires the `teams_call_status` tool, the `teams-call` CLI command,
+`register(ctx)` wires the `msteams_bridge_status` tool, the `msteams-bridge` CLI command,
 and the `on_session_end` hook.
 
 > Entry-point plugins are **opt-in**: `hermes plugins enable` does **not** work for
-> pip-installed plugins. Enable it by adding `teams_call` to `plugins.enabled` in
+> pip-installed plugins. Enable it by adding `msteams_bridge` to `plugins.enabled` in
 > `~/.hermes/config.yaml`.
 
 Keep `plugin.yaml`'s `version` in sync with `pyproject.toml`'s `version`.

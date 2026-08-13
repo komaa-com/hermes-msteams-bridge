@@ -59,7 +59,7 @@ class EchoCallSessionHandler(CallSessionHandler):
         try:
             await session.send_expression(expression.HAPPY)
         except Exception:  # noqa: BLE001 — cosmetic; never fail the call
-            logger.debug("[teams_call] echo: expression send failed", exc_info=True)
+            logger.debug("[msteams_bridge] echo: expression send failed", exc_info=True)
 
     async def on_audio_frame(self, session: CallSession, msg: protocol.AudioFrame) -> None:
         if not session.recording_active:
@@ -95,7 +95,15 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         self._ambient_interval_s = 6.0
         self._ambient_last_ts: dict[str, int] = {}
         self._vision_budget = VisionBudget(bridge_config.max_vision_per_minute if bridge_config else 30)
-        self._last_speaker = ""  # from unmixed-audio speaker_name, for attribution
+        # Speaker attribution (``_last_speaker`` lives on the base — latest frame).
+        # ``_turn_speaker`` is latched on the FIRST frame of a caller turn and is what
+        # the finished turn is attributed to: input transcripts finalize a beat after
+        # end-of-speech, so by then _last_speaker can already be the NEXT person and
+        # a group call collapses everyone's words onto whoever spoke last.
+        self._turn_speaker = ""
+        # Last speaker announced to the model, so one label is injected per change
+        # rather than one per 20 ms frame.
+        self._announced_speaker = ""
         self._auto_on = True  # server-VAD auto-response (off until 1:1 is confirmed)
         self._tools: CallToolRunner | None = None  # built once the session is established
         # Set on every response.done — lets the walkthrough advance when the
@@ -126,7 +134,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             # Without a working realtime brain the caller would sit in silent dead
             # air until they hang up. Mirror OpenClaw's closeCall(): tear the Teams
             # call down cleanly instead. (on_session_end then closes rt.)
-            logger.error("[teams_call] realtime connect failed for %s", session.call_id, exc_info=True)
+            logger.error("[msteams_bridge] realtime connect failed for %s", session.call_id, exc_info=True)
             await self._close_call("realtime-connect-failed")
             return
         # Start in MANUAL response mode (auto-response off): until participants is
@@ -177,7 +185,18 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             )
         name = self._first_name()
         if name:
-            parts.append(f"The caller's first name is {name}; address them by name naturally.")
+            # Roster-aware presence: the model is told who it is talking to AND how the
+            # per-speaker labels it will receive are meant to be used, so a meeting stops
+            # sounding like one undifferentiated voice.
+            parts.append(
+                f"CALLER IDENTITY: You are speaking with {name}. Greet them by their "
+                "first name once, warmly and briefly, then continue naturally - do not "
+                "repeat their name every turn. On a group call the person talking is "
+                'announced to you in brackets (e.g. "[The person now speaking is '
+                'Sara.]"); use those names to address people directly when it helps, '
+                "and to keep track of who said what, but never read an announcement "
+                "aloud as part of your reply."
+            )
         phrases = ", ".join(f'"{p}"' for p in self._gate_cfg.wake_phrases)
         parts.append(
             "If more than one person is on the call, stay silent unless someone "
@@ -215,11 +234,11 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
         session = self._session
         if session is None or session.closed:
             return
-        logger.info("[teams_call] closing Teams call %s: %s", session.call_id, reason)
+        logger.info("[msteams_bridge] closing Teams call %s: %s", session.call_id, reason)
         try:
             await session._ws.close()
         except Exception:  # noqa: BLE001 — teardown is best-effort
-            logger.debug("[teams_call] error closing call ws for %s", session.call_id, exc_info=True)
+            logger.debug("[msteams_bridge] error closing call ws for %s", session.call_id, exc_info=True)
 
     async def _on_realtime_closed(self, reason: str = "provider-closed") -> None:
         """The realtime provider dropped mid-call → end the Teams call cleanly."""
@@ -228,7 +247,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
     async def _on_realtime_error(self, error: object) -> None:
         """Provider 'error' event. The session already reset _response_active so the
         next turn can speak; surface it here for observability / future recovery."""
-        logger.warning("[teams_call] realtime provider error on %s: %s",
+        logger.warning("[msteams_bridge] realtime provider error on %s: %s",
                        self._session.call_id if self._session else "?", error)
 
     async def on_recording_status(self, session: CallSession, msg: protocol.RecordingStatus) -> None:
@@ -274,13 +293,36 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             return
         if self._rt is None:
             return
-        if msg.speaker_name:  # unmixed-audio attribution for the meeting transcript
+        if msg.speaker_name:  # unmixed-audio attribution
             self._last_speaker = msg.speaker_name
+            if not self._turn_speaker:  # first frame of this caller turn
+                self._turn_speaker = msg.speaker_name
+            await self._announce_speaker(msg.speaker_name)
         pcm16 = base64.b64decode(msg.payload_base64)
         if not self._echo.allow_input(audio.pcm16_rms(pcm16)):  # echo guard
             return
         pcm24 = audio.resample_pcm16(pcm16, PCM_SAMPLE_RATE_HZ, REALTIME_SAMPLE_RATE_HZ)
         await self._rt.push_audio(pcm24)
+
+    async def _announce_speaker(self, name: str) -> None:
+        """Tell the MODEL who is talking, once per speaker change.
+
+        The realtime model transcribes the caller's audio itself, so an unmixed
+        ``speakerName`` that only ever reached the minutes left it hearing a
+        five-person meeting as one voice. A non-responding user item lands in the
+        conversation *before* the turn's audio is committed, so the words that
+        follow are attributed to the right person. Cosmetic-cost only: no
+        response is created and no vision budget is touched.
+        """
+        if not name or name == self._announced_speaker or self._rt is None:
+            return
+        self._announced_speaker = name
+        try:
+            await self._rt.send_user_text(
+                f"[The person now speaking is {name}.]", respond=False
+            )
+        except Exception:  # noqa: BLE001 — attribution is best-effort, never fail a turn
+            logger.debug("[msteams_bridge] speaker announce failed", exc_info=True)
 
     async def on_video_frame(self, session: CallSession, msg: protocol.VideoFrame) -> None:
         if self._require_recording and not session.recording_active:
@@ -355,7 +397,6 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
                         continue
                     if not self._vision_budget.try_consume_ambient():
                         break  # ambient share spent; explicit reserve stays
-                    self._ambient_last_ts[src] = frame.ts
                     # D1: ship the attribution the frame already carries, not
                     # bare pixels — the model learns WHOSE surface changed.
                     # §3.3: the same label feeds the minutes' visual track
@@ -365,7 +406,17 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
                     try:
                         await self._rt.send_image(frame.data_url(), caption=label)
                     except Exception:  # noqa: BLE001 — ambient, best-effort
-                        pass
+                        # Give the slot back AND leave the frame un-latched: latching
+                        # first marked a failed push as "already delivered", so the
+                        # loop never retried it while the budget it never benefited
+                        # from stayed spent, starving look_at_screen.
+                        self._vision_budget.refund()
+                        logger.debug(
+                            "[msteams_bridge] ambient vision push failed for %s", src, exc_info=True
+                        )
+                        continue
+                    # Latch only AFTER a successful send.
+                    self._ambient_last_ts[src] = frame.ts
         except asyncio.CancelledError:
             raise
 
@@ -429,8 +480,12 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
     async def _on_input_transcript(self, text: str) -> None:
         """Caller's finished turn — drive verbal interrupts and the group gate."""
         self._echo.mark_caller_turn()
-        # Capture all speech for the minutes (full meeting, not just addressed turns).
-        self._meeting.add(self._last_speaker or self._first_name() or "Caller", text)
+        # Capture all speech for the minutes (full meeting, not just addressed turns),
+        # attributed to whoever STARTED this turn — see _turn_speaker.
+        self._meeting.add(
+            self._turn_speaker or self._last_speaker or self._first_name() or "Caller", text
+        )
+        self._turn_speaker = ""  # next turn latches its own speaker
         # 1) Deterministic verbal interrupt ("stop" / "توقف" / "⟨name⟩, stop").
         if verbal_interrupts.is_verbal_interrupt(text, self._gate_cfg.wake_phrases):
             self._drop_response = True  # suppress any reply to the interrupt itself
@@ -603,6 +658,8 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
     async def on_audio_frame(self, session: CallSession, msg: protocol.AudioFrame) -> None:
         if (self._require_recording and not session.recording_active) or self._processing:
             return
+        if msg.speaker_name:  # unmixed-audio attribution for the turn + the minutes
+            self._last_speaker = msg.speaker_name
         pcm = base64.b64decode(msg.payload_base64)
         utterance = self._buf.push(pcm, audio.pcm16_rms(pcm))
         if utterance is not None:
@@ -633,17 +690,24 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
         # Auto-attach is ambient use — it must not starve an explicit look.
         if not self._vision_budget.try_consume_ambient():
             return ""
-        self._last_frame_ts = frame.ts
         from .hermes_api import vision_ask
 
-        desc = await vision_ask(
-            "In one short sentence, describe what the caller is sharing.",
-            [{"type": "image", "url": frame.data_url()}],
-            max_tokens=120,
-        )
+        try:
+            desc = await vision_ask(
+                "In one short sentence, describe what the caller is sharing.",
+                [{"type": "image", "url": frame.data_url()}],
+                max_tokens=120,
+            )
+        except Exception:  # noqa: BLE001 — a raising vision facade must not spend the slot
+            self._vision_budget.refund()
+            logger.debug("[msteams_bridge] vision auto-attach failed", exc_info=True)
+            return ""
         if not desc:  # facade missing or the call failed — give the budget back
             self._vision_budget.refund()
             return ""
+        # Latch only AFTER a successful describe: latching first both spent the
+        # budget and marked the frame as already seen, so it was never retried.
+        self._last_frame_ts = frame.ts
         # §3.3: streaming already pays for a described scene — record it for
         # the minutes' Presented/Shown section too.
         self._meeting.add_visual(f"{frame.describe()}: {desc}")
@@ -657,8 +721,10 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             if verbal_interrupts.is_verbal_interrupt(transcript, self._gate_cfg.wake_phrases):
                 return  # nothing playing in half-duplex; just don't reply
             # Capture ALL caller speech for the minutes — including unaddressed
-            # meeting discussion — before the respond gate.
-            self._meeting.add(self._first_name() or "Caller", transcript)
+            # meeting discussion — before the respond gate. Attributed to the
+            # unmixed-audio speaker when the worker supplies one, so a meeting is
+            # not filed entirely under the person who placed the call.
+            self._meeting.add(self._last_speaker or self._first_name() or "Caller", transcript)
             # On-demand "summarize the meeting" → post minutes instead of a normal reply.
             if meeting.is_summary_request(transcript):
                 await self._speak(await meeting.post_minutes(self._consult, self._meeting, self._thread_id))
@@ -672,20 +738,62 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             await self._safe_expression(expression.THINKING)
             # Auto-attach vision: prepend a fresh frame's description as context.
             vision_ctx = await self._vision_context()
-            text = f"{vision_ctx}{transcript}" if vision_ctx else transcript
-            adapter = getattr(self, "_gateway_adapter", None)
-            if adapter is not None:
-                # Phase 2b: a REAL gateway agent turn — sessions, authorization
-                # and approvals apply; the reply returns via adapter.send()
-                # -> speak_text. Fall back to the inline consult on failure.
-                if await self._emit_gateway_turn(adapter, text):
-                    return
-            reply = await self._consult.ask(text)
-            self._meeting.add("Assistant", reply)
-            await self._speak(reply)
+            # Prefix the speaker so the agent knows WHO asked on a group call. The
+            # gate and interrupt checks above run on the raw transcript, so the label
+            # can never be mistaken for a wake phrase.
+            attributed = f"{self._last_speaker}: {transcript}" if self._last_speaker else transcript
+            await self._agent_turn(f"{vision_ctx}{attributed}" if vision_ctx else attributed)
         except Exception:  # noqa: BLE001 — never let a turn crash the call
-            logger.error("[teams_call] streaming turn failed", exc_info=True)
+            logger.error("[msteams_bridge] streaming turn failed", exc_info=True)
         finally:
+            self._buf.reset()
+            self._processing = False
+
+    async def _agent_turn(self, text: str) -> None:
+        """Run one caller turn through the agent and speak the reply.
+
+        Shared by the transcribed-utterance path and the DTMF path so a keypress
+        reaches the agent through exactly the same delivery route as speech.
+        """
+        adapter = getattr(self, "_gateway_adapter", None)
+        if adapter is not None:
+            # Phase 2b: a REAL gateway agent turn — sessions, authorization
+            # and approvals apply; the reply returns via adapter.send()
+            # -> speak_text. Fall back to the inline consult on failure.
+            if await self._emit_gateway_turn(adapter, text):
+                return
+        reply = await self._consult.ask(text)
+        self._meeting.add("Assistant", reply)
+        await self._speak(reply)
+
+    async def on_dtmf(self, session: CallSession, msg: protocol.Dtmf) -> None:
+        """Surface a keypad press as a caller turn so "press 1 to…" flows work.
+
+        Streaming defined no handler at all, so a keypress was decoded, dispatched
+        and then dropped on the base class's no-op: the caller pressed a key and got
+        nothing back. Same recording gate the realtime path applies (DTMF is in-band,
+        media-derived caller input) and the same half-duplex busy guard the audio
+        path uses.
+        """
+        if self._session is None or not self._recording_ok(session) or self._processing:
+            return
+        digit = (msg.digit or "").strip()
+        if not digit:
+            return
+        self._processing = True
+        self._utterance_task = asyncio.create_task(self._dtmf_turn(digit))
+
+    async def _dtmf_turn(self, digit: str) -> None:
+        text = f'The caller pressed the key "{digit}".'
+        try:
+            self._meeting.add(self._last_speaker or self._first_name() or "Caller", text)
+            await self._safe_expression(expression.THINKING)
+            await self._agent_turn(text)
+        except Exception:  # noqa: BLE001 — never let a keypress crash the call
+            logger.error("[msteams_bridge] streaming DTMF turn failed", exc_info=True)
+        finally:
+            # Drop whatever partial audio the VAD had buffered before the keypress,
+            # so it is not stitched onto the next utterance.
             self._buf.reset()
             self._processing = False
 
@@ -707,14 +815,14 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
             ))
             return True
         except Exception:  # noqa: BLE001 — degrade to the inline consult
-            logger.error("[teams_call] gateway turn failed; falling back inline", exc_info=True)
+            logger.error("[msteams_bridge] gateway turn failed; falling back inline", exc_info=True)
             return False
 
     async def _transcribe(self, pcm: bytes) -> str:
         from .hermes_api import hermes_home, transcribe
         from .streaming_audio import write_wav_pcm16
 
-        d = hermes_home() / "cache" / "teams_call"
+        d = hermes_home() / "cache" / "msteams_bridge"
         d.mkdir(parents=True, exist_ok=True)
         wav = d / f"utt_{uuid.uuid4().hex}.wav"
         try:
@@ -779,7 +887,7 @@ class StreamingCallSessionHandler(BaseTeamsCallHandler):
 
         from .hermes_api import hermes_home, text_to_speech
 
-        d = hermes_home() / "cache" / "teams_call"
+        d = hermes_home() / "cache" / "msteams_bridge"
         d.mkdir(parents=True, exist_ok=True)
         out = d / f"tts_{uuid.uuid4().hex}.mp3"
         try:

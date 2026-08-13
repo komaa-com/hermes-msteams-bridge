@@ -45,8 +45,8 @@ enums:
     doc: "Where the conversation lives. 'personal' is the 1:1 chat with the bot; 'groupChat' includes meeting chats; 'channel' is a STANDARD team channel (shared/private channels are out of scope). Open set: treat unknown as groupChat and relay normally."
   AttachmentKind:
     open: true
-    values: [image, file]
-    doc: "'image' is an inline image (v1 supported). 'file' is a real file attachment: personal-chat files are v1, channel/group files are NOT relayed and arrive with relayable=false."
+    values: [image, file, audio]
+    doc: "'image' is an inline image (v1 supported). 'file' is a real file attachment: personal-chat files are v1, channel/group files are NOT relayed and arrive with relayable=false. 'audio' is a Teams voice message; the agent transcribes it when transcribeVoiceMessages is on, and otherwise treats it as any other attachment. Additive on an OPEN enum, so a peer that predates it relays the clip as an unknown kind rather than failing."
   ReplyKind:
     open: true
     values: [message, typing, error]

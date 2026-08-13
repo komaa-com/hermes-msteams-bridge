@@ -115,7 +115,7 @@ class _FakeSession:
         return self._ws.closed
 
 
-def test_handler_closes_teams_call_on_realtime_drop():
+def test_handler_closes_msteams_bridge_on_realtime_drop():
     h = RealtimeCallSessionHandler(RealtimeConfig(api_key="x"))
     sess = _FakeSession()
     h._session = sess  # type: ignore[assignment]

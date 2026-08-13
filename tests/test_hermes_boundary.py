@@ -112,9 +112,9 @@ def test_probe_reports_missing_surfaces_without_raising():
 
 @bare_only
 def test_status_tool_reports_not_ok_without_host():
-    from hermes_msteams_bridge.tools import handle_teams_call_status
+    from hermes_msteams_bridge.tools import handle_msteams_bridge_status
 
-    payload = json.loads(handle_teams_call_status())
+    payload = json.loads(handle_msteams_bridge_status())
     assert payload["boundaries_ok"] is False
     assert "operational_ok" in payload
 
@@ -303,7 +303,7 @@ def test_elevenlabs_resolve_config_via_boundary(monkeypatch):
     from hermes_msteams_bridge import elevenlabs_tts
 
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
-    monkeypatch.delenv("TEAMS_CALL_ELEVENLABS_VOICE_ID", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_ELEVENLABS_VOICE_ID", raising=False)
     monkeypatch.setattr(
         hermes_api,
         "load_hermes_config",

@@ -1,13 +1,13 @@
 # DESIGN - hermes-msteams-bridge
 
-Contributor-facing architecture notes for the `teams_call` Hermes plugin. If you
+Contributor-facing architecture notes for the `msteams_bridge` Hermes plugin. If you
 want to *use* the plugin, start with the [README](README.md) and the
 [documentation site](https://komaa-com.github.io/hermes-msteams-bridge/).
 This document is for people changing the code.
 
 ## What the plugin is
 
-`teams_call` adds **Microsoft Teams voice/video** to a Hermes AI agent. It is a
+`msteams_bridge` adds **Microsoft Teams voice/video** to a Hermes AI agent. It is a
 pure-Python Hermes plugin, installed into the same environment as Hermes and
 discovered through the `hermes_agent.plugins` entry point.
 
@@ -19,7 +19,7 @@ is the **client that dials in**. The plugin owns the *brain* of the call
 (dialogue, perception, and the avatar driver cues); StandIn owns the Teams media.
 
 ```
- Teams call ⇄  StandIn media bridge  ──HMAC WebSocket──▶  teams_call plugin (Hermes)
+ Teams call ⇄  StandIn media bridge  ──HMAC WebSocket──▶  msteams_bridge plugin (Hermes)
    (hosted)      dials into the plugin        • bridge_server.py  - the WS server
                                               • handlers.py        - the call brain
                                               • realtime/          - speech-to-speech client
@@ -171,7 +171,7 @@ they are the contract both sides agree on.
 | Module | Responsibility |
 |---|---|
 | `__init__.py` | `register(ctx)` - registers the status tool, CLI, and session hook |
-| `cli.py` | `hermes teams-call {status,serve}`; `--handler` selects the brain |
+| `cli.py` | `hermes msteams-bridge {status,serve}`; `--handler` selects the brain |
 | `config.py` | `TeamsVoiceConfig`; resolves config.yaml + env + defaults; allowlist check |
 | `bridge_server.py` | the WS server, `CallSession`, `CallSessionHandler`, lifecycle |
 | `protocol.py` | inbound decode + outbound builders (the wire contract) |
@@ -192,7 +192,7 @@ they are the contract both sides agree on.
 | `meeting.py` / `meeting_docx.py` | meeting transcript, minutes, `.docx` |
 | `elevenlabs_tts.py` | ElevenLabs TTS with timestamp alignment |
 | `outbound.py` | outbound "call me back" place-call |
-| `tools.py` | the `teams_call_status` agent tool |
+| `tools.py` | the `msteams_bridge_status` agent tool |
 
 ## Design invariants worth preserving
 

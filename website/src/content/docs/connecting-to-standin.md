@@ -11,7 +11,7 @@ model, the three tiers, and how the shared secret works.
 ## The connection model
 
 - **The plugin is a local WebSocket server.** When you run
-  `hermes msteams-call serve`, it binds `127.0.0.1:8443` by default and waits.
+  `hermes msteams-bridge serve`, it binds `127.0.0.1:8443` by default and waits.
 - **The StandIn media bridge is the client.** For each Teams call it opens **one
   WebSocket** to `/msteams/calling/{callId}` on your server.
 - **Authentication is HMAC over a shared secret.** Both sides hold the same secret.
@@ -49,10 +49,10 @@ connection - a WebSocket on `calling_port` and HTTP on `messages_port` - hosted 
 ```yaml
 plugins:
   entries:
-    msteams_call:
+    msteams_bridge:
       config:
-        calling_secret:  ${MSTEAMS_CALL_CALLING_SECRET}    # calling lane
-        messages_secret: ${MSTEAMS_CALL_MESSAGES_SECRET}   # messages lane
+        calling_secret:  ${MSTEAMS_BRIDGE_CALLING_SECRET}    # calling lane
+        messages_secret: ${MSTEAMS_BRIDGE_MESSAGES_SECRET}   # messages lane
 ```
 
 One agent instance serves one connection; run a second instance for a second organization.
@@ -90,10 +90,10 @@ Use it to: run the assistant in production for your users.
 ## Where the shared secret comes from
 
 - **Sandbox:** the sandbox page issues a secret for the session - copy it into
-  `TEAMS_CALL_SHARED_SECRET`.
+  `MSTEAMS_BRIDGE_SHARED_SECRET`.
 - **Free / Subscription:** **pairing your bot in the StandIn dashboard issues the
-  secret.** Copy it into `TEAMS_CALL_SHARED_SECRET` (keep it in `~/.hermes/.env`,
-  referenced from `config.yaml` as `${TEAMS_CALL_SHARED_SECRET}`).
+  secret.** Copy it into `MSTEAMS_BRIDGE_SHARED_SECRET` (keep it in `~/.hermes/.env`,
+  referenced from `config.yaml` as `${MSTEAMS_BRIDGE_SHARED_SECRET}`).
 
 The value in your config **must equal** the value StandIn holds, or the HMAC
 handshake fails with `401`.

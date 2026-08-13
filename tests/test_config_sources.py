@@ -9,8 +9,8 @@ from hermes_msteams_bridge.realtime import openai_client as rc
 
 
 def test_resolve_config_prefers_block_then_env(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_SHARED_SECRET", "from-env")
-    monkeypatch.setenv("TEAMS_CALL_PORT", "9999")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_SHARED_SECRET", "from-env")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_PORT", "9999")
     # config.yaml block wins for the keys it sets...
     block = {"shared_secret": "from-config", "host": "0.0.0.0"}
     cfg = cfgmod.resolve_config(extra=block)
@@ -20,13 +20,13 @@ def test_resolve_config_prefers_block_then_env(monkeypatch):
 
 
 def test_resolve_config_env_only_when_block_empty(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_SHARED_SECRET", "env-secret")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_SHARED_SECRET", "env-secret")
     cfg = cfgmod.resolve_config(extra={})
     assert cfg.shared_secret == "env-secret"
 
 
 def test_realtime_block_overrides_env(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_REALTIME_VOICE", "cedar")  # env
+    monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_VOICE", "cedar")  # env
     monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "envkey")
     block = {
         "backend": "azure",

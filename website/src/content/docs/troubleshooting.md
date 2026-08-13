@@ -3,7 +3,7 @@ title: "Troubleshooting"
 description: "Common problems and fixes: handshake 401s, plugin not loading, silent calls, allowlist rejections."
 ---
 
-Common problems and how to fix them. `hermes teams-call status` is your first stop -
+Common problems and how to fix them. `hermes msteams-bridge status` is your first stop -
 it prints the resolved host/port/path and whether a shared secret is configured.
 
 ## The handshake is rejected (HTTP 401)
@@ -16,16 +16,16 @@ it prints the resolved host/port/path and whether a shared secret is configured.
 
 - **Secret mismatch** (most common) - `shared_secret` in your config does **not**
   equal the value paired in StandIn. They must be byte-for-byte identical. Re-copy
-  it from the StandIn sandbox page or dashboard into `TEAMS_CALL_SHARED_SECRET`.
+  it from the StandIn sandbox page or dashboard into `MSTEAMS_BRIDGE_SHARED_SECRET`.
 - **Clock skew** - `timestamp outside window` means the two machines' clocks differ
   by more than ±60 s. Sync time (NTP).
 - **No secret at all** - `bridge not configured (no shared secret)`: set
-  `TEAMS_CALL_SHARED_SECRET`. The bridge won't even start without it.
+  `MSTEAMS_BRIDGE_SHARED_SECRET`. The bridge won't even start without it.
 
 ## The plugin isn't loading
 
-**Symptom:** `msteams_call` doesn't appear in `hermes plugins list`, or
-`hermes teams-call …` is an unknown command.
+**Symptom:** `msteams_bridge` doesn't appear in `hermes plugins list`, or
+`hermes msteams-bridge …` is an unknown command.
 
 Two independent requirements - **both** must hold:
 
@@ -37,10 +37,10 @@ Two independent requirements - **both** must hold:
    If that fails, reinstall targeting the Hermes interpreter (see
    [Getting Started](/hermes-msteams-bridge/getting-started/#1-install-into-the-same-venv-as-hermes)).
 2. **Listed in `plugins.enabled`.** Entry-point plugins are opt-in. Add
-   `msteams_call` to `plugins.enabled` in `~/.hermes/config.yaml`.
+   `msteams_bridge` to `plugins.enabled` in `~/.hermes/config.yaml`.
 
 :::caution[Pip plugins are enabled in config.yaml only]
-**`hermes plugins enable msteams_call` does NOT work for pip-installed plugins** -
+**`hermes plugins enable msteams_bridge` does NOT work for pip-installed plugins** -
 it only sees bundled/user-dir plugins. Enable it in `config.yaml` instead.
 :::
 
@@ -52,8 +52,8 @@ it only sees bundled/user-dir plugins. Enable it in `config.yaml` instead.
 - **Wrong handler** - `--handler logging` sends **no audio back** by design. Use
   `--handler realtime` (or `echo` to smoke-test with your own voice echoed).
 - **Realtime key missing** - `realtime` refuses to start without a key
-  (`OPENAI_API_KEY`, or `AZURE_FOUNDRY_API_KEY` / `TEAMS_CALL_REALTIME_API_KEY` for
-  Azure). Check `hermes teams-call status` and your `.env`.
+  (`OPENAI_API_KEY`, or `AZURE_FOUNDRY_API_KEY` / `MSTEAMS_BRIDGE_REALTIME_API_KEY` for
+  Azure). Check `hermes msteams-bridge status` and your `.env`.
 - **Group gate** - in a meeting (2+ people) the agent only speaks when **addressed**
   by a wake phrase (`assistant`, `hermes`, or your `wake_phrases`). Say its name.
 
@@ -68,7 +68,7 @@ doesn't need it).
 ## The recording gate is blocking media
 
 If you *intend* to run without recording (e.g. a lab test), set
-`require_recording_status: false` (or `TEAMS_CALL_REQUIRE_RECORDING_STATUS=false`).
+`require_recording_status: false` (or `MSTEAMS_BRIDGE_REQUIRE_RECORDING_STATUS=false`).
 Leave it **on** for production/compliance - it prevents processing any
 media-derived data before recording is active.
 
@@ -109,11 +109,11 @@ curl http://127.0.0.1:8443/health   # -> ok
 ```
 
 If that fails, the plugin's server isn't running (or is bound to a different host/port) -
-`hermes teams-call status` shows the resolved values.
+`hermes msteams-bridge status` shows the resolved values.
 
 ## Still stuck?
 
-Run with info logging and watch the `[msteams_call]` lines, then open an issue on
+Run with info logging and watch the `[msteams_bridge]` lines, then open an issue on
 [GitHub](https://github.com/komaa-com/hermes-msteams-bridge/issues) with the
 handler you used, the log around the failure, and your (secret-free) config. Hosted-
 service questions belong at [docs.komaa.com](https://docs.komaa.com).

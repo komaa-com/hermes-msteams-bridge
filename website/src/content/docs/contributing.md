@@ -16,7 +16,7 @@ in the repo, and the architecture is in
 - Run the tests: `pytest tests/ -v`. They cover the wire protocol,
   HMAC handshake + replay guard, echo guard, group-call gate, verbal interrupts,
   viseme estimation, vision budget, and audio helpers - no network, no Hermes needed.
-- Exercise the plugin locally with `TEAMS_CALL_SHARED_SECRET=dev hermes teams-call
+- Exercise the plugin locally with `MSTEAMS_BRIDGE_SHARED_SECRET=dev hermes msteams-bridge
   serve --handler echo` (or `logging`) - neither needs a provider key.
 
 ## Branch + PR conventions

@@ -31,7 +31,7 @@ class AgentConsult:
         # mints a fresh UUID per turn, so the "watch it work" browser capture
         # can never target THIS consult's browser session (round 8) — it would
         # read the shared default session instead.
-        self.browser_task_id = f"teams_call:consult:{session_id or uuid.uuid4().hex[:8]}"
+        self.browser_task_id = f"msteams_bridge:consult:{session_id or uuid.uuid4().hex[:8]}"
         self._agent = None  # run_agent.AIAgent, built on first use
         # Serialize consults: AIAgent is not concurrency-safe, and a timed-out
         # consult's thread keeps running — the lock stops a later consult from
@@ -122,7 +122,7 @@ class AgentConsult:
             # D4: never promise a follow-up that nothing will deliver. The
             # consult thread is abandoned on timeout; say so honestly and point
             # at the path that DOES deliver (the background task tool).
-            logger.warning("[teams_call] consult timed out after %.0fs; result dropped", timeout_s)
+            logger.warning("[msteams_bridge] consult timed out after %.0fs; result dropped", timeout_s)
             # The timed-out thread is still running on this agent (threads
             # cannot be killed). Drop our reference so the NEXT consult builds
             # a fresh agent instead of sharing state with the zombie.
@@ -132,5 +132,5 @@ class AgentConsult:
                 "in the background and I'll send you the result when it's done."
             )
         except Exception:  # noqa: BLE001 — never let a consult crash the call
-            logger.error("[teams_call] agent consult failed", exc_info=True)
+            logger.error("[msteams_bridge] agent consult failed", exc_info=True)
             return "Sorry, I ran into an error working on that."

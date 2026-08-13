@@ -12,7 +12,7 @@ Microsoft Teams **voice/video (Conversational Video Interface)** for **Hermes Ag
 packaged as a standalone, pip-installable plugin: install it *on top of* a normal
 Hermes install, no fork required.
 
-The plugin (name **`msteams_call`**) hosts the HMAC-authenticated WebSocket bridge that
+The plugin (name **`msteams_bridge`**) hosts the HMAC-authenticated WebSocket bridge that
 the hosted **StandIn** media bridge dials into, and drives the call: realtime (OpenAI/Azure
 speech-to-speech) **or** streaming (STT→agent→TTS), camera/screen vision, the avatar
 driver cues (expression / visemes / show-to-caller), group-call etiquette, DTMF,
@@ -26,15 +26,15 @@ bilingual EN/AR, and meeting recap/minutes (posted to the chat, with a local
 Teams Store, connect this agent in the StandIn portal, and paste one secret. No Azure bot
 registration, no App ID or client secret, no separate chat plane to run. Voice and chat are two lanes of
 the SAME StandIn connection - a WebSocket on the calling port and HTTP on the messages port - hosted
-by one process, whether that is `msteams-call serve` or the gateway-resident platform.
+by one process, whether that is `msteams-bridge serve` or the gateway-resident platform.
 
 ```yaml
 plugins:
   entries:
-    msteams_call:
+    msteams_bridge:
       config:
         # ONE connection secret from the StandIn portal - covers calls AND chat.
-        secret: ${MSTEAMS_CALL_SECRET}
+        secret: ${MSTEAMS_BRIDGE_SECRET}
 ```
 
 The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
@@ -45,6 +45,13 @@ still an open port.
 One agent instance serves **one** StandIn connection: the secret is a single value scoped to one
 tenant binding. Serving several tenants means several instances, each with its own secret. Never
 share one secret across tenants.
+
+Teams **voice messages** on that chat lane can be transcribed into the agent's turn, so "listen to
+this and tell me what you think" is a question it can answer instead of a filename it can only read
+back. It is off by default because every clip is a paid STT call and a voice note can run for
+minutes - turn it on with `transcribe_voice_messages: true` (or
+`MSTEAMS_BRIDGE_TRANSCRIBE_VOICE_MESSAGES=1`), and it uses whichever `stt.provider` Hermes is already
+configured with.
 
 **Bring your own Azure bot (advanced).** You own the Entra app, client secret and Azure Bot resource,
 and the Teams *chat* plane is handled by Hermes's own `platforms/teams` adapter rather than here.
@@ -116,7 +123,7 @@ uv pip install --python /path/to/hermes/venv/bin/python -e ./hermes-msteams-brid
 
 ## Enable + run
 
-Entry-point plugins are **opt-in**: add `msteams_call` to `plugins.enabled` in
+Entry-point plugins are **opt-in**: add `msteams_bridge` to `plugins.enabled` in
 **`~/.hermes/config.yaml`** (see [Configure](#configure) below). `hermes plugins enable`
 does **not** work for pip-installed plugins (it only sees bundled/user-dir plugins),
 so enable it in config:
@@ -124,25 +131,25 @@ so enable it in config:
 ```yaml
 plugins:
   enabled:
-    - msteams_call
+    - msteams_bridge
   entries:
-    msteams_call:
+    msteams_bridge:
       config:
-        secret: ${MSTEAMS_CALL_SECRET}   # the StandIn connection secret - covers calling AND messages
+        secret: ${MSTEAMS_BRIDGE_SECRET}   # the StandIn connection secret - covers calling AND messages
         host: 127.0.0.1                  # both lanes; the tunnel terminates TLS and proxies to loopback
         # WITHOUT a caller policy the bridge accepts NOTHING: the allowlist IS the policy and an empty
         # one denies every inbound call, so a setup that otherwise looks finished answers nothing.
         # Name trusted callers here, or set allow_all: true to take whatever StandIn routes to you.
         allow_all: true
 platforms:
-  msteams_call:
+  msteams_bridge:
     enabled: true                        # the gateway hosts the bridge; without this nothing listens
 ```
 
 Then run the bridge (handlers: `realtime` | `streaming` | `echo` | `logging`):
 
 ```bash
-hermes msteams-call serve --handler realtime
+hermes msteams-bridge serve --handler realtime
 ```
 
 And, separately, the Teams chat plane + cron:
@@ -156,18 +163,100 @@ hermes gateway run
 Config lives in Hermes's own files (this package ships none). Non-secret settings go
 in **`config.yaml`**; secrets go in **`.env`** and are referenced with `${VAR}`.
 
-**`~/.hermes/config.yaml`**, under `plugins.entries.msteams_call.config`:
+### StandIn Managed Bot (recommended)
+
+StandIn provides the Teams bot. You install **StandIn** from the Teams Store, connect this agent in
+the StandIn portal, and paste **one secret** here. No Azure bot registration, no App ID, no client
+secret, no endpoint configuration.
+
+That one secret covers **both lanes**: calls arrive on the calling WebSocket and Teams messages on
+the messages endpoint. They are two lanes of a single StandIn binding, which is why there is one
+value to paste and no enable flag to remember.
+
+This is the whole configuration - a working install, with the tuning knobs left out. Every other
+setting has a default that is already correct.
+
+**`~/.hermes/config.yaml`**:
 
 ```yaml
 plugins:
   enabled:
-    - msteams_call                          # entry-point plugins are opt-in
+    - msteams_bridge          # entry-point plugins are opt-in; without this it never loads
   entries:
-    msteams_call:
+    msteams_bridge:
       config:
-        secret: ${MSTEAMS_CALL_SECRET}   # MUST match the secret StandIn gave you
+        # The connection secret from the StandIn portal. ONE value, BOTH lanes: calling
+        # (ws://host:8443/msteams/calling) and messages (http://host:8444/msteams/messages).
+        # A per-lane `chat_secret` is accepted as an override; you do not need one.
+        secret: ${MSTEAMS_BRIDGE_SECRET}
+
+        # 127.0.0.1 on purpose: your tunnel (Tailscale Funnel, ngrok, a reverse proxy) terminates
+        # TLS publicly and forwards to loopback, so no port is exposed on the LAN.
         host: 127.0.0.1
-        port: 8443                         # voice WS StandIn dials: ws://host:port/msteams/calling
+        calling_port: 8443
+        messages_port: 8444
+        gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
+
+        # Accept inbound callers. With this false and an empty allowlist, every caller is denied
+        # and the call simply never connects - the most common "it does nothing" first install.
+        allow_all: true
+
+        # REQUIRED for voice. Without a realtime block the plugin still starts and still connects,
+        # then cannot answer. Azure serves realtime from <resource>.cognitiveservices.azure.com -
+        # NOT <resource>.openai.azure.com, which 404s the websocket handshake - on its own
+        # api-version. `gpt-realtime` is speech-to-speech, so it is the only deployment needed:
+        # no whisper, no tts-1.
+        realtime:
+          backend: azure
+          azure_endpoint: https://<your-resource>.cognitiveservices.azure.com
+          azure_deployment: gpt-realtime
+          azure_api_version: 2025-04-01-preview
+          voice: cedar
+          api_key: ${AZURE_FOUNDRY_API_KEY}
+```
+
+**`~/.hermes/.env`** - only the two values referenced above:
+
+```bash
+MSTEAMS_BRIDGE_SECRET=<paste from the StandIn portal>
+AZURE_FOUNDRY_API_KEY=<your Azure OpenAI key>
+```
+
+> **Public OpenAI** instead of Azure: `backend: openai`, `model: gpt-realtime`,
+> `api_key: ${OPENAI_API_KEY}`, and drop the `azure_*` keys.
+
+**Check it before you call.** Restart after any config change (`hermes gateway restart`), then:
+
+```bash
+hermes msteams-bridge status
+```
+
+The startup log should show both lanes listening:
+
+```
+[msteams_bridge] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling
+managed chat: listening on 127.0.0.1:8444/msteams/messages
+```
+
+Run one mode or the other, never both: `hermes msteams-bridge serve` (standalone) **or**
+`hermes gateway run` with the plugin enabled. Two copies fight over the same port.
+
+### Full key reference
+
+Every option, including the self-hosted Teams bot path:
+
+```yaml
+plugins:
+  enabled:
+    - msteams_bridge                          # entry-point plugins are opt-in
+  entries:
+    msteams_bridge:
+      config:
+        secret: ${MSTEAMS_BRIDGE_SECRET}   # MUST match the secret StandIn gave you
+        host: 127.0.0.1                    # shared by both lanes
+        calling_port: 8443                 # voice WS StandIn dials: ws://host:port/msteams/calling
+        messages_port: 8444                # managed chat lane: http://host:port/msteams/messages
+        # chat_secret: ${MSTEAMS_BRIDGE_CHAT_SECRET}  # optional: a distinct key per lane; defaults to `secret`
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
         meeting_recap: true                # optional: post minutes at call end
         # share_point_site_id: ${TEAMS_SHAREPOINT_SITE_ID}  # optional: future large-file path (file card itself needs only the bot creds)
@@ -176,7 +265,7 @@ plugins:
         allowlist_allow_names: false       # also match the allowlist against display names (weaker; default off)
         session_scope: per-call            # per-call | per-thread | per-aad
         wake_phrases: [assistant, hermes]  # group-call wake phrases (speak only when addressed)
-        show_file_root: ""                 # show_file containment root (default <hermes home>/workspace/teams_call_show)
+        show_file_root: ""                 # show_file containment root (default <hermes home>/workspace/msteams_bridge_show)
         # Outbound "call me back" (StandIn places the return call over its loopback endpoint):
         worker_base_url: http://127.0.0.1:9440   # loopback endpoint StandIn exposes for place-call
         allow_remote_worker: false         # refuse a non-loopback place-call target unless set
@@ -197,14 +286,14 @@ plugins:
 > **Public OpenAI** instead of Azure: set `backend: openai`, `model: gpt-realtime`,
 > `api_key: ${OPENAI_API_KEY}`, and drop the `azure_*` keys.
 > **Streaming** (STT→agent→TTS) instead of realtime: omit the `realtime:` block and run
-> `hermes msteams-call serve --handler streaming` (needs `ffmpeg` on PATH).
+> `hermes msteams-bridge serve --handler streaming` (needs `ffmpeg` on PATH).
 
 **`~/.hermes/.env`**, the secrets referenced above (plus Teams chat-plane creds if you
 also run `hermes gateway run`):
 
 ```bash
 # Voice bridge
-TEAMS_CALL_SHARED_SECRET=<same value you set in StandIn>
+MSTEAMS_BRIDGE_SECRET=<same value you set in StandIn>
 AZURE_FOUNDRY_API_KEY=<azure-openai-key>                 # or OPENAI_API_KEY for public OpenAI
 
 # Teams chat plane (platforms/teams) - only if you run the gateway:
@@ -243,12 +332,12 @@ package exposes:
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-msteams_call = "hermes_msteams_bridge"
+msteams_bridge = "hermes_msteams_bridge"
 ```
 
 Hermes imports `hermes_msteams_bridge` and calls its `register(ctx)`, registering the
-`teams-call` CLI, the status tool, and the session hook. Entry-point plugins are
-opt-in, so `msteams_call` must be in `plugins.enabled` (add it in `config.yaml`;
+`msteams-bridge` CLI, the status tool, and the session hook. Entry-point plugins are
+opt-in, so `msteams_bridge` must be in `plugins.enabled` (add it in `config.yaml`;
 `hermes plugins enable` does not see pip-installed plugins).
 
 ## Requirements
@@ -261,7 +350,7 @@ opt-in, so `msteams_call` must be in `plugins.enabled` (add it in `config.yaml`;
 
 This is the same code as the original in-tree plugin, repackaged for pip
 distribution so you don't have to fork Hermes. Install it on **vanilla** Hermes; don't
-also keep a bundled `msteams_call` (same name → the entry-point would shadow it).
+also keep a bundled `msteams_bridge` (same name → the entry-point would shadow it).
 
 - **Voice/CVI** works fully on vanilla Hermes.
 - **Meeting minutes** post to the chat with the Word `.docx` attached as a

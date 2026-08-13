@@ -7,17 +7,17 @@ import pytest
 from hermes_msteams_bridge.realtime import openai_client as rc
 
 _ENV_KEYS = [
-    "TEAMS_CALL_REALTIME_BACKEND",
-    "TEAMS_CALL_REALTIME_URL",
-    "TEAMS_CALL_AZURE_ENDPOINT",
-    "TEAMS_CALL_AZURE_DEPLOYMENT",
-    "TEAMS_CALL_AZURE_API_VERSION",
-    "TEAMS_CALL_REALTIME_VOICE",
-    "TEAMS_CALL_REALTIME_API_KEY",
+    "MSTEAMS_BRIDGE_REALTIME_BACKEND",
+    "MSTEAMS_BRIDGE_REALTIME_URL",
+    "MSTEAMS_BRIDGE_AZURE_ENDPOINT",
+    "MSTEAMS_BRIDGE_AZURE_DEPLOYMENT",
+    "MSTEAMS_BRIDGE_AZURE_API_VERSION",
+    "MSTEAMS_BRIDGE_REALTIME_VOICE",
+    "MSTEAMS_BRIDGE_REALTIME_API_KEY",
     "AZURE_OPENAI_API_KEY",
     "AZURE_FOUNDRY_API_KEY",
     "OPENAI_API_KEY",
-    "TEAMS_CALL_REALTIME_MODEL",
+    "MSTEAMS_BRIDGE_REALTIME_MODEL",
 ]
 
 
@@ -28,11 +28,11 @@ def _clean_env(monkeypatch):
 
 
 def test_azure_builds_proven_url(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_REALTIME_BACKEND", "azure")
-    monkeypatch.setenv("TEAMS_CALL_AZURE_ENDPOINT", "https://my-resource.cognitiveservices.azure.com")
-    monkeypatch.setenv("TEAMS_CALL_AZURE_DEPLOYMENT", "gpt-realtime")
-    monkeypatch.setenv("TEAMS_CALL_AZURE_API_VERSION", "2025-04-01-preview")
-    monkeypatch.setenv("TEAMS_CALL_REALTIME_VOICE", "cedar")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_BACKEND", "azure")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_AZURE_ENDPOINT", "https://my-resource.cognitiveservices.azure.com")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_AZURE_DEPLOYMENT", "gpt-realtime")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_AZURE_API_VERSION", "2025-04-01-preview")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_VOICE", "cedar")
     monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "k123")
 
     cfg = rc.realtime_config_from_env(block={})
@@ -47,8 +47,8 @@ def test_azure_builds_proven_url(monkeypatch):
 
 
 def test_azure_explicit_url_passthrough(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_REALTIME_URL", "wss://x.openai.azure.com/openai/realtime?foo=1")
-    monkeypatch.setenv("TEAMS_CALL_REALTIME_API_KEY", "k")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_URL", "wss://x.openai.azure.com/openai/realtime?foo=1")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_API_KEY", "k")
     cfg = rc.realtime_config_from_env(block={})
     assert cfg.api_key_header == "api-key"  # azure.com detected
     assert cfg.base_url == "wss://x.openai.azure.com/openai/realtime?foo=1"
@@ -71,11 +71,11 @@ def test_heartbeat_s_defaults_and_env_override(monkeypatch):
     """Server WS heartbeat: default 20s (reaps half-open callers), env-overridable, env "0" disables."""
     from hermes_msteams_bridge.config import resolve_config
 
-    monkeypatch.delenv("TEAMS_CALL_HEARTBEAT_S", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_HEARTBEAT_S", raising=False)
     assert resolve_config({"shared_secret": "x"}).heartbeat_s == 20.0
 
-    monkeypatch.setenv("TEAMS_CALL_HEARTBEAT_S", "45")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_HEARTBEAT_S", "45")
     assert resolve_config({"shared_secret": "x"}).heartbeat_s == 45.0
 
-    monkeypatch.setenv("TEAMS_CALL_HEARTBEAT_S", "0")  # explicit disable via env
+    monkeypatch.setenv("MSTEAMS_BRIDGE_HEARTBEAT_S", "0")  # explicit disable via env
     assert resolve_config({"shared_secret": "x"}).heartbeat_s == 0.0

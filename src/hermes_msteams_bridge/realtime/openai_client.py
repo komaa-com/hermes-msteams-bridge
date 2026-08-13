@@ -80,8 +80,7 @@ def _to_ws(url: str) -> str:
 
 
 def _pick(block: "dict[str, Any]", key: str, env: str, default: str = "") -> str:
-    """Resolve one value: config.yaml block first, then env (``TEAMS_CALL_*``
-    preferred, ``TEAMS_CALL_*`` legacy), then default."""
+    """Resolve one value: config.yaml block first, then the ``MSTEAMS_BRIDGE_*`` env var, then default."""
     val = block.get(key)
     if val is not None and str(val).strip() != "":
         return str(val).strip()
@@ -94,11 +93,11 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
     """Build a :class:`RealtimeConfig` from config.yaml + environment.
 
     Both sources are supported per the Hermes docs: the per-plugin config.yaml
-    block (``plugins.entries.teams_call.config.realtime``) takes precedence,
+    block (``plugins.entries.msteams_bridge.config.realtime``) takes precedence,
     with environment variables as the fallback. ``block`` is read from config.yaml
     when omitted (pass ``{}`` to force env-only, e.g. in tests).
 
-    Azure is selected when ``backend: azure`` / ``TEAMS_CALL_REALTIME_BACKEND=azure``,
+    Azure is selected when ``backend: azure`` / ``MSTEAMS_BRIDGE_REALTIME_BACKEND=azure``,
     an Azure endpoint is set, or an explicit ``*.azure.com`` URL is given;
     otherwise OpenAI (bearer auth). The Azure key falls back to
     ``AZURE_OPENAI_API_KEY`` / ``AZURE_FOUNDRY_API_KEY`` so the gateway key is reused.
@@ -111,27 +110,27 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
         except Exception:  # noqa: BLE001
             block = {}
 
-    backend = _pick(block, "backend", "TEAMS_CALL_REALTIME_BACKEND").lower()
-    explicit_url = _pick(block, "url", "TEAMS_CALL_REALTIME_URL")
-    azure_endpoint = _pick(block, "azure_endpoint", "TEAMS_CALL_AZURE_ENDPOINT")
-    voice = _pick(block, "voice", "TEAMS_CALL_REALTIME_VOICE", DEFAULT_VOICE)
-    instructions = _pick(block, "instructions", "TEAMS_CALL_REALTIME_INSTRUCTIONS", DEFAULT_INSTRUCTIONS)
+    backend = _pick(block, "backend", "MSTEAMS_BRIDGE_REALTIME_BACKEND").lower()
+    explicit_url = _pick(block, "url", "MSTEAMS_BRIDGE_REALTIME_URL")
+    azure_endpoint = _pick(block, "azure_endpoint", "MSTEAMS_BRIDGE_AZURE_ENDPOINT")
+    voice = _pick(block, "voice", "MSTEAMS_BRIDGE_REALTIME_VOICE", DEFAULT_VOICE)
+    instructions = _pick(block, "instructions", "MSTEAMS_BRIDGE_REALTIME_INSTRUCTIONS", DEFAULT_INSTRUCTIONS)
 
     def _vad() -> "tuple[float, int, int]":
         try:
-            thr = float(_pick(block, "vad_threshold", "TEAMS_CALL_VAD_THRESHOLD", "0.5"))
-            prefix = int(_pick(block, "prefix_padding_ms", "TEAMS_CALL_PREFIX_PADDING_MS", "300"))
-            silence = int(_pick(block, "silence_duration_ms", "TEAMS_CALL_SILENCE_DURATION_MS", "500"))
+            thr = float(_pick(block, "vad_threshold", "MSTEAMS_BRIDGE_VAD_THRESHOLD", "0.5"))
+            prefix = int(_pick(block, "prefix_padding_ms", "MSTEAMS_BRIDGE_PREFIX_PADDING_MS", "300"))
+            silence = int(_pick(block, "silence_duration_ms", "MSTEAMS_BRIDGE_SILENCE_DURATION_MS", "500"))
         except ValueError:
             return 0.5, 300, 500
         return thr, prefix, silence
 
     vad_threshold, prefix_padding_ms, silence_duration_ms = _vad()
     # "" / "none" / "off" disables caller transcription.
-    transcribe_model = _pick(block, "input_transcribe_model", "TEAMS_CALL_INPUT_TRANSCRIBE_MODEL", "whisper-1")
+    transcribe_model = _pick(block, "input_transcribe_model", "MSTEAMS_BRIDGE_INPUT_TRANSCRIBE_MODEL", "whisper-1")
     if transcribe_model.lower() in ("none", "off", "disabled"):
         transcribe_model = ""
-    bilingual = _pick(block, "bilingual", "TEAMS_CALL_BILINGUAL", "").lower() in ("1", "true", "yes", "on")
+    bilingual = _pick(block, "bilingual", "MSTEAMS_BRIDGE_BILINGUAL", "").lower() in ("1", "true", "yes", "on")
     # languages: a YAML list in the realtime block, or a comma-separated env.
     raw_langs = block.get("languages")
     if isinstance(raw_langs, (list, tuple)):
@@ -142,7 +141,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
     else:
         languages = tuple(
             p.strip().lower()
-            for p in __import__("hermes_msteams_bridge.config", fromlist=["config"]).plugin_env("TEAMS_CALL_LANGUAGES", "").split(",")
+            for p in __import__("hermes_msteams_bridge.config", fromlist=["config"]).plugin_env("MSTEAMS_BRIDGE_LANGUAGES", "").split(",")
             if p.strip()
         )
     if not languages and bilingual:  # deprecated alias
@@ -150,9 +149,9 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
     is_azure = backend == "azure" or bool(azure_endpoint) or "azure.com" in explicit_url
 
     if is_azure:
-        deployment = _pick(block, "azure_deployment", "TEAMS_CALL_AZURE_DEPLOYMENT")
+        deployment = _pick(block, "azure_deployment", "MSTEAMS_BRIDGE_AZURE_DEPLOYMENT")
         api_version = _pick(
-            block, "azure_api_version", "TEAMS_CALL_AZURE_API_VERSION", DEFAULT_AZURE_API_VERSION
+            block, "azure_api_version", "MSTEAMS_BRIDGE_AZURE_API_VERSION", DEFAULT_AZURE_API_VERSION
         )
         if explicit_url:
             base_url = _to_ws(explicit_url)
@@ -160,7 +159,7 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
             base = _to_ws(azure_endpoint.rstrip("/"))
             base_url = f"{base}/openai/realtime?api-version={api_version}&deployment={deployment}"
         api_key = (
-            _pick(block, "api_key", "TEAMS_CALL_REALTIME_API_KEY")
+            _pick(block, "api_key", "MSTEAMS_BRIDGE_REALTIME_API_KEY")
             or os.getenv("AZURE_OPENAI_API_KEY", "").strip()
             or os.getenv("AZURE_FOUNDRY_API_KEY", "").strip()
         )
@@ -180,9 +179,9 @@ def realtime_config_from_env(block: "dict[str, Any] | None" = None) -> RealtimeC
         )
 
     return RealtimeConfig(
-        api_key=_pick(block, "api_key", "TEAMS_CALL_REALTIME_API_KEY")
+        api_key=_pick(block, "api_key", "MSTEAMS_BRIDGE_REALTIME_API_KEY")
         or os.getenv("OPENAI_API_KEY", "").strip(),
-        model=_pick(block, "model", "TEAMS_CALL_REALTIME_MODEL", DEFAULT_MODEL),
+        model=_pick(block, "model", "MSTEAMS_BRIDGE_REALTIME_MODEL", DEFAULT_MODEL),
         voice=voice,
         instructions=instructions,
         base_url=explicit_url or DEFAULT_BASE_URL,
@@ -282,7 +281,7 @@ class RealtimeSession:
             session["tool_choice"] = "auto"
         await self._send({"type": "session.update", "session": session})
         self._recv_task = asyncio.create_task(self._recv_loop())
-        logger.info("[teams_call] realtime connected model=%s", self._cfg.model)
+        logger.info("[msteams_bridge] realtime connected model=%s", self._cfg.model)
 
     def _spawn_tool_task(self, coro) -> None:
         """Run a tool callback off the receive loop, tracked for teardown.
@@ -475,7 +474,7 @@ class RealtimeSession:
             raise
         except Exception:  # noqa: BLE001 — a transport error must not crash silently
             reason = "provider-error"
-            logger.error("[teams_call] realtime recv loop error", exc_info=True)
+            logger.error("[msteams_bridge] realtime recv loop error", exc_info=True)
         # The socket dropped on the provider's side (server close, transport error,
         # or the stream just ended) while we did NOT initiate it: notify the handler
         # so it can close the Teams call rather than leave the caller in dead air.
@@ -540,7 +539,7 @@ class RealtimeSession:
             # on it, permanently muting the bot in group/manual mode. Clear it here so
             # the next turn can speak.
             self._response_active = False
-            logger.warning("[teams_call] realtime error: %s", evt.get("error"))
+            logger.warning("[msteams_bridge] realtime error: %s", evt.get("error"))
             await self._safe(self.on_error, evt.get("error"))
 
     async def _safe(self, cb: Optional[AsyncCb], *args: Any) -> None:
@@ -549,4 +548,4 @@ class RealtimeSession:
         try:
             await cb(*args)
         except Exception:  # noqa: BLE001 — a callback fault must not kill the loop
-            logger.error("[teams_call] realtime callback error", exc_info=True)
+            logger.error("[msteams_bridge] realtime callback error", exc_info=True)

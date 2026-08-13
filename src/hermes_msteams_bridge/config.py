@@ -1,4 +1,4 @@
-"""Configuration resolution for the teams_call bridge.
+"""Configuration resolution for msteams_bridge.
 
 Values come from (in priority order): the plugin's ``config.extra`` block in
 ``config.yaml`` (when wired through the gateway), then environment variables,
@@ -22,7 +22,7 @@ FRAME_DURATION_MS = 20
 BYTES_PER_FRAME = PCM_SAMPLE_RATE_HZ * FRAME_DURATION_MS // 1000 * 2  # 640
 
 def plugin_env(name: str, default: str = "") -> str:
-    """Read a ``TEAMS_CALL_*`` plugin env var (single indirection point)."""
+    """Read a ``MSTEAMS_BRIDGE_*`` plugin env var (single indirection point)."""
     return os.getenv(name, default)
 
 
@@ -92,8 +92,8 @@ class TeamsVoiceConfig:
     session_scope: str = "per-call"
     # Group-call wake phrases (speak only when addressed).
     wake_phrases: tuple[str, ...] = ("assistant", "hermes")
-    # StandIn MANAGED chat lane. Part of THIS plugin's config (plugins.entries.teams_call.config
-    # -> managed_chat, env TEAMS_CALL_MANAGED_CHAT_*) rather than a separate config root: it is the
+    # StandIn MANAGED chat lane. Part of THIS plugin's config (plugins.entries.msteams_bridge.config
+    # -> managed_chat, env MSTEAMS_BRIDGE_MANAGED_CHAT_*) rather than a separate config root: it is the
     # same Teams integration as the voice lane, just the chat plane, and an operator should not have
     # to learn a second namespace to turn it on. Empty secret = lane off, fail closed.
     managed_chat_secret: str = ""
@@ -101,10 +101,15 @@ class TeamsVoiceConfig:
     managed_chat_port: int = 8444
     managed_chat_path: str = "/managed/chat"
     managed_chat_gateway_reply_url: str = "https://teams.standin.komaa.com/api/chat/reply"
+    # Transcribe inbound Teams VOICE MESSAGES on the chat lane and fold the words into the turn.
+    # OPT-IN: each clip is a paid STT call and a voice note can run for minutes, so this is recurring
+    # per-message spend an operator should choose rather than discover on a bill. A FLAT plugin-root
+    # key rather than part of the managed_bot block, because the cost is per message, not per binding.
+    transcribe_voice_messages: bool = False
     # Post end-of-call meeting minutes to the Teams chat (opt-in).
     meeting_recap: bool = False
     # Root directory show_file may display from (containment). Empty =
-    # <hermes home>/workspace/teams_call_show (a dedicated presentation dir,
+    # <hermes home>/workspace/msteams_bridge_show (a dedicated presentation dir,
     # not the whole workspace). Everything outside it is refused (§3.1).
     show_file_root: str = ""
     # Phase 4(b) "watch it work" browser view: while a background task runs,
@@ -139,11 +144,11 @@ def _coerce_float(value: Any, default: float) -> float:
 
 
 def plugin_config_block() -> dict[str, Any]:
-    """Return the ``plugins.entries.teams_call.config`` block from config.yaml.
+    """Return the ``plugins.entries.msteams_bridge.config`` block from config.yaml.
 
     Empty dict when unset or config can't be loaded. ``${VAR}`` references are
     already expanded by Hermes's config loader, so secrets can live in ``.env``
-    and be referenced here (e.g. ``shared_secret: ${TEAMS_CALL_SHARED_SECRET}``).
+    and be referenced here (e.g. ``shared_secret: ${MSTEAMS_BRIDGE_SHARED_SECRET}``).
     Delegates to the :mod:`.hermes_api` boundary (the config loader is one of
     its documented residents).
     """
@@ -156,76 +161,76 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     """Build a :class:`TeamsVoiceConfig` from config.yaml + environment.
 
     ``extra`` is the per-plugin config block; when omitted it is read from
-    ``plugins.entries.teams_call.config`` in config.yaml. Environment variables
+    ``plugins.entries.msteams_bridge.config`` in config.yaml. Environment variables
     are the fallback so the bridge still works with no config file.
     """
     extra = extra if extra is not None else plugin_config_block()
 
     # ONE secret serves both lanes (owner decision 2026-08-09): the portal generates a single value
-    # per connection and the user pastes it once - `secret` / MSTEAMS_CALL_SECRET fills calling AND
+    # per connection and the user pastes it once - `secret` / MSTEAMS_BRIDGE_SECRET fills calling AND
     # messages. Per-lane keys remain as OVERRIDES for split-key deployments. Deliberately a NEW key
     # rather than falling back to shared_secret: that fallback would silently open the chat listener
     # on every existing voice-only deployment at upgrade.
     one_secret = (
         str(extra.get("secret") or "").strip()
-        or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_SECRET", "").strip()
     )
     shared_secret = (
         str(extra.get("calling_secret") or extra.get("shared_secret") or "").strip()
-        or plugin_env("MSTEAMS_CALL_CALLING_SECRET", "").strip()
-        or plugin_env("TEAMS_CALL_SHARED_SECRET", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_CALLING_SECRET", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_SHARED_SECRET", "").strip()
         or one_secret
     )
     host = (
         str(extra.get("host") or "").strip()
-        or plugin_env("TEAMS_CALL_HOST", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_HOST", "").strip()
         or "127.0.0.1"
     )
     # `calling_port` is the name (paired with `messages_port`); `port` stays accepted.
     port = _coerce_int(
-        extra.get("calling_port") or extra.get("port") or plugin_env("TEAMS_CALL_PORT", ""), 8443
+        extra.get("calling_port") or extra.get("port") or plugin_env("MSTEAMS_BRIDGE_PORT", ""), 8443
     )
     path = str(extra.get("path") or "").strip() or DEFAULT_PATH
     window = _coerce_int(
-        extra.get("hmac_window_ms") or plugin_env("TEAMS_CALL_HMAC_WINDOW_MS", ""),
+        extra.get("hmac_window_ms") or plugin_env("MSTEAMS_BRIDGE_HMAC_WINDOW_MS", ""),
         60_000,
     )
     worker_base_url = (
         str(extra.get("worker_base_url") or "").strip()
-        or plugin_env("TEAMS_CALL_WORKER_BASE_URL", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_WORKER_BASE_URL", "").strip()
         or "http://127.0.0.1:9440"
     )
     tenant_id = (
         str(extra.get("tenant_id") or "").strip()
-        or plugin_env("TEAMS_CALL_TENANT_ID", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_TENANT_ID", "").strip()
         or os.getenv("TEAMS_TENANT_ID", "").strip()
     )
-    # Allowlist: TEAMS_CALL_ALLOWLIST; when empty, inherit the chat plane's
+    # Allowlist: MSTEAMS_BRIDGE_ALLOWLIST; when empty, inherit the chat plane's
     # TEAMS_ALLOWED_USERS so voice + chat share one AAD allowlist.
-    allowlist = _coerce_list(extra.get("allowlist"), plugin_env("TEAMS_CALL_ALLOWLIST", "")) or _coerce_list(
+    allowlist = _coerce_list(extra.get("allowlist"), plugin_env("MSTEAMS_BRIDGE_ALLOWLIST", "")) or _coerce_list(
         None, os.getenv("TEAMS_ALLOWED_USERS", "")
     )
     rr = extra.get("require_recording_status")
     if rr is None:
-        rr = plugin_env("TEAMS_CALL_REQUIRE_RECORDING_STATUS", "true")
+        rr = plugin_env("MSTEAMS_BRIDGE_REQUIRE_RECORDING_STATUS", "true")
     require_recording = str(rr).strip().lower() not in ("0", "false", "no", "off")  # default True
     max_vision = _coerce_int(
-        extra.get("max_vision_per_minute") or plugin_env("TEAMS_CALL_MAX_VISION_PER_MINUTE", ""), 30
+        extra.get("max_vision_per_minute") or plugin_env("MSTEAMS_BRIDGE_MAX_VISION_PER_MINUTE", ""), 30
     )
     max_call_duration_s = _coerce_float(
-        extra.get("max_call_duration_s") or plugin_env("TEAMS_CALL_MAX_CALL_DURATION_S", ""), 0.0
+        extra.get("max_call_duration_s") or plugin_env("MSTEAMS_BRIDGE_MAX_CALL_DURATION_S", ""), 0.0
     )
     heartbeat_s = _coerce_float(
-        extra.get("heartbeat_s") or plugin_env("TEAMS_CALL_HEARTBEAT_S", ""), 20.0
+        extra.get("heartbeat_s") or plugin_env("MSTEAMS_BRIDGE_HEARTBEAT_S", ""), 20.0
     )
     session_scope = (
         str(extra.get("session_scope") or "").strip()
-        or plugin_env("TEAMS_CALL_SESSION_SCOPE", "").strip()
+        or plugin_env("MSTEAMS_BRIDGE_SESSION_SCOPE", "").strip()
         or "per-call"
     )
-    wake = _coerce_list(extra.get("wake_phrases"), plugin_env("TEAMS_CALL_WAKE_PHRASES", ""))
+    wake = _coerce_list(extra.get("wake_phrases"), plugin_env("MSTEAMS_BRIDGE_WAKE_PHRASES", ""))
     meeting_recap = str(
-        extra.get("meeting_recap", "") or plugin_env("TEAMS_CALL_MEETING_RECAP", "")
+        extra.get("meeting_recap", "") or plugin_env("MSTEAMS_BRIDGE_MEETING_RECAP", "")
     ).strip().lower() in ("1", "true", "yes", "on")
 
     return TeamsVoiceConfig(
@@ -246,13 +251,18 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
         meeting_recap=meeting_recap,
         show_file_root=(
             str(extra.get("show_file_root") or "").strip()
-            or plugin_env("TEAMS_CALL_SHOW_FILE_ROOT", "").strip()
+            or plugin_env("MSTEAMS_BRIDGE_SHOW_FILE_ROOT", "").strip()
         ),
         share_point_site_id=_resolve_sharepoint(extra),
-        watch_browser_tasks=_coerce_bool(extra.get("watch_browser_tasks"), "TEAMS_CALL_WATCH_BROWSER_TASKS"),
-        allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "TEAMS_CALL_ALLOWLIST_ALLOW_NAMES"),
-        allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "TEAMS_CALL_ALLOW_REMOTE_WORKER"),
-        allow_all=_coerce_bool(extra.get("allow_all"), "TEAMS_CALL_ALLOW_ALL"),
+        watch_browser_tasks=_coerce_bool(extra.get("watch_browser_tasks"), "MSTEAMS_BRIDGE_WATCH_BROWSER_TASKS"),
+        allowlist_allow_names=_coerce_bool(extra.get("allowlist_allow_names"), "MSTEAMS_BRIDGE_ALLOWLIST_ALLOW_NAMES"),
+        allow_remote_worker=_coerce_bool(extra.get("allow_remote_worker"), "MSTEAMS_BRIDGE_ALLOW_REMOTE_WORKER"),
+        allow_all=_coerce_bool(extra.get("allow_all"), "MSTEAMS_BRIDGE_ALLOW_ALL"),
+        # Absent, empty or anything but an explicit truthy word reads as OFF - a cost-bearing
+        # capability must never arrive by accident.
+        transcribe_voice_messages=_coerce_bool(
+            extra.get("transcribe_voice_messages"), "MSTEAMS_BRIDGE_TRANSCRIBE_VOICE_MESSAGES"
+        ),
         **_resolve_managed_chat(extra),
     )
 
@@ -262,36 +272,32 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
     settings, so they live at the plugin root next to their voice counterparts rather than in a
     nested block:
 
-        teams_call:
+        msteams_bridge:
           config:
-            shared_secret: ${TEAMS_CALL_SHARED_SECRET}     # voice lane
-            chat_secret:   ${TEAMS_CALL_CHAT_SECRET}       # managed chat lane
+            shared_secret: ${MSTEAMS_BRIDGE_SHARED_SECRET}     # voice lane
+            chat_secret:   ${MSTEAMS_BRIDGE_CHAT_SECRET}       # managed chat lane
             host: 127.0.0.1                                # shared by both lanes
             calling_port: 8443
             messages_port: 8444
             gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
 
-    The one thing NOT collapsed is the secret. `shared_secret` cannot serve both lanes: StandIn
-    issues two keys per connection on purpose (voice signs "{ts}.{callId}" on the WS handshake, chat
-    signs "{ts}.{rawBody}" over HTTP), so a key that leaks from one surface cannot forge the other,
-    and they rotate independently. Reusing one value would silently fail HMAC anyway - the portal
-    stores them as separate columns and the gateway signs with the chat one.
+    The secret resolves per lane, but ONE value is enough. A StandIn connection can issue a distinct
+    key per lane - voice signs "{ts}.{callId}" on the WS handshake, chat signs "{ts}.{rawBody}" over
+    HTTP, so a key that leaks from one surface cannot forge the other and they rotate independently -
+    and `chat_secret` is how you supply one. When it is absent the single connection `secret` serves
+    both lanes (see the resolution order below, where it sits LAST so any per-lane override wins).
+    That is the shape a default StandIn install uses, and it is what the README documents.
 
     Older shapes still resolve, deterministically: nested managed_bot/managed_chat blocks, `port`
-    for the voice port, and the TEAMS_CALL_MANAGED_{BOT,CHAT}_* env names.
-    """
-    """Resolve the managed chat lane from ``managed_chat:`` under this plugin's config block, with
-    ``TEAMS_CALL_MANAGED_CHAT_*`` env as the fallback - the same precedence every other setting here
-    uses. Nested under the plugin instead of a top-level namespace so config.yaml reads as one
-    Teams integration:
+    for the voice port, and the MSTEAMS_BRIDGE_MANAGED_{BOT,CHAT}_* env names:
 
         plugins:
           entries:
-            teams_call:
+            msteams_bridge:
               config:
-                shared_secret: ${TEAMS_CALL_SHARED_SECRET}
+                secret: ${MSTEAMS_BRIDGE_SECRET}
                 managed_chat:
-                  secret: ${TEAMS_CALL_MANAGED_CHAT_SECRET}
+                  secret: ${MSTEAMS_BRIDGE_MANAGED_CHAT_SECRET}
                   port: 8444
     """
     # `managed_bot` is the name - the StandIn Managed Bot connection, of which chat is one lane.
@@ -306,33 +312,33 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
         return str(extra.get(flat_key) or block.get(nested_key) or "").strip()
 
     def _env(suffix: str) -> str:
-        """TEAMS_CALL_MANAGED_BOT_* first, the older MANAGED_CHAT_* spelling as fallback."""
+        """MSTEAMS_BRIDGE_MANAGED_BOT_* first, the older MANAGED_CHAT_* spelling as fallback."""
         return (
-            plugin_env(f"TEAMS_CALL_MANAGED_BOT_{suffix}", "").strip()
-            or plugin_env(f"TEAMS_CALL_MANAGED_CHAT_{suffix}", "").strip()
+            plugin_env(f"MSTEAMS_BRIDGE_MANAGED_BOT_{suffix}", "").strip()
+            or plugin_env(f"MSTEAMS_BRIDGE_MANAGED_CHAT_{suffix}", "").strip()
         )
     return {
         # chat_secret at the plugin root; managed_bot.chat_secret / .secret still accepted.
         "managed_chat_secret": (
             str(extra.get("messages_secret") or extra.get("chat_secret") or "").strip()
             or str(block.get("chat_secret") or block.get("secret") or "").strip()
-            or plugin_env("MSTEAMS_CALL_MESSAGES_SECRET", "").strip()
-            or plugin_env("TEAMS_CALL_CHAT_SECRET", "").strip()
+            or plugin_env("MSTEAMS_BRIDGE_MESSAGES_SECRET", "").strip()
+            or plugin_env("MSTEAMS_BRIDGE_CHAT_SECRET", "").strip()
             or _env("SECRET")
             # the single connection secret, LAST so a per-lane override always wins
             or str(extra.get("secret") or "").strip()
-            or plugin_env("MSTEAMS_CALL_SECRET", "").strip()
+            or plugin_env("MSTEAMS_BRIDGE_SECRET", "").strip()
         ),
         # The chat lane binds the SAME host as voice unless told otherwise - one machine, one
         # interface. That was the documented intent and not what happened: the chain did not read
-        # TEAMS_CALL_HOST (the voice lane's env var) and fell back to 0.0.0.0, so a deployment that set
-        # only TEAMS_CALL_HOST - or nothing at all - got voice on loopback and the MESSAGES listener on
+        # MSTEAMS_BRIDGE_HOST (the voice lane's env var) and fell back to 0.0.0.0, so a deployment that set
+        # only MSTEAMS_BRIDGE_HOST - or nothing at all - got voice on loopback and the MESSAGES listener on
         # every interface. Reading the voice var and defaulting to the voice default makes the
         # inheritance real rather than described.
         "managed_chat_host": (
             _flat("host", "host")
             or _env("HOST")
-            or plugin_env("TEAMS_CALL_HOST", "").strip()
+            or plugin_env("MSTEAMS_BRIDGE_HOST", "").strip()
             or "127.0.0.1"
         ),
         "managed_chat_port": _coerce_int(

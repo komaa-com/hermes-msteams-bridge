@@ -58,19 +58,19 @@ def test_non_interrupt_sentences_pass_through(utterance):
 
 
 def test_languages_from_env_csv(monkeypatch):
-    monkeypatch.setenv("TEAMS_CALL_LANGUAGES", "en, FR ,de")
+    monkeypatch.setenv("MSTEAMS_BRIDGE_LANGUAGES", "en, FR ,de")
     cfg = realtime_config_from_env({})
     assert cfg.languages == ("en", "fr", "de")
 
 
 def test_languages_from_block_list(monkeypatch):
-    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"languages": ["En", "ar"]})
     assert cfg.languages == ("en", "ar")
 
 
 def test_bilingual_alias_maps_to_ar_en(monkeypatch):
-    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"bilingual": "true"})
     assert cfg.languages == ("ar", "en")
 
@@ -750,7 +750,7 @@ def test_timed_tts_empty_provider_does_not_divert(monkeypatch):
     import hermes_msteams_bridge.hermes_api as hermes_api
     from hermes_msteams_bridge import timed_tts
 
-    monkeypatch.delenv("TEAMS_CALL_ELEVENLABS_VOICE_ID", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_ELEVENLABS_VOICE_ID", raising=False)
     monkeypatch.setattr(hermes_api, "active_tts_provider", lambda: "")
     # Leftover key alone must NOT enable the timed path.
     assert timed_tts._elevenlabs_available() is False
@@ -786,7 +786,7 @@ def test_close_awaits_inflight_tool_tasks():
 
 
 def test_languages_yaml_string_honoured(monkeypatch):
-    monkeypatch.delenv("TEAMS_CALL_LANGUAGES", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_LANGUAGES", raising=False)
     cfg = realtime_config_from_env({"languages": "en, FR"})
     assert cfg.languages == ("en", "fr")
 
@@ -831,7 +831,7 @@ def test_progress_loop_shows_browser_frames_when_opted_in(monkeypatch, tmp_path)
             frames.append(caption)
 
     class _Consult:
-        browser_task_id = "teams_call:consult:test"
+        browser_task_id = "msteams_bridge:consult:test"
 
     class _Handler:
         _session = _Session()
@@ -848,7 +848,7 @@ def test_progress_loop_shows_browser_frames_when_opted_in(monkeypatch, tmp_path)
         assert name == "browser_vision"
         # The host reads task_id from the dispatch kwargs, never from args - asserting it in
         # args is how the broken in-args form stayed green while isolation silently failed.
-        assert kw["task_id"] == "teams_call:consult:test"
+        assert kw["task_id"] == "msteams_bridge:consult:test"
         assert "task_id" not in args
         import json as _json
 
@@ -1024,33 +1024,32 @@ def test_streaming_gateway_turn_roundtrip(monkeypatch):
     assert received[0][1] == "19:t@thread.v2"
 
 
-# ── rename: teams_call only (no legacy teams_voice support) ──────────────────
+# ── naming: msteams_bridge is the one name across env, config and registration ──
 
 
-def test_env_reads_teams_call_only(monkeypatch):
+def test_env_reads_msteams_bridge(monkeypatch):
     from hermes_msteams_bridge.config import plugin_env
 
-    monkeypatch.setenv("TEAMS_CALL_PORT", "1111")  # legacy name: ignored
-    monkeypatch.delenv("TEAMS_CALL_PORT", raising=False)
-    assert plugin_env("TEAMS_CALL_PORT") == ""
-    monkeypatch.setenv("TEAMS_CALL_PORT", "2222")
-    assert plugin_env("TEAMS_CALL_PORT") == "2222"
+    monkeypatch.delenv("MSTEAMS_BRIDGE_PORT", raising=False)
+    assert plugin_env("MSTEAMS_BRIDGE_PORT") == ""
+    monkeypatch.setenv("MSTEAMS_BRIDGE_PORT", "2222")
+    assert plugin_env("MSTEAMS_BRIDGE_PORT") == "2222"
 
 
-def test_config_entry_teams_call_only(monkeypatch):
+def test_config_entry_read_from_msteams_bridge_key_only(monkeypatch):
     import hermes_msteams_bridge.hermes_api as hermes_api
 
     monkeypatch.setattr(hermes_api, "load_hermes_config", lambda: {
         "plugins": {"entries": {
-            "teams_voice": {"config": {"port": 8443, "meeting_recap": True}},  # legacy: ignored
-            "teams_call": {"config": {"port": 9443}},
+            "some_other_plugin": {"config": {"port": 8443, "meeting_recap": True}},
+            "msteams_bridge": {"config": {"port": 9443}},
         }}
     })
     block = hermes_api.plugin_config_block()
     assert block == {"port": 9443}
 
 
-def test_register_wires_teams_call_surfaces_only():
+def test_register_wires_msteams_bridge_surfaces():
     import hermes_msteams_bridge as pkg
 
     calls = []
@@ -1071,13 +1070,12 @@ def test_register_wires_teams_call_surfaces_only():
     try:
         pkg.register(_Ctx())
         cli_names = [n for kind, n in calls if kind == "cli"]
-        assert cli_names == ["msteams-call"]  # platform-prefixed; no legacy CLI alias
-        # The portal, the installer and the docs all write platforms.msteams_call - registering only
-        # "teams_call" meant that config loaded the plugin and activated no platform at all, silently.
-        # Both names are registered; the legacy one keeps published 0.4.0 configs working.
-        assert ("platform", "msteams_call") in calls
-        assert ("platform", "teams_call") in calls
-        assert ("tool", "teams_call_status") in calls
+        assert cli_names == ["msteams-bridge"]
+        # The platform name must match what the portal, the installer and the docs write as
+        # platforms.msteams_bridge.enabled - a mismatch loads the plugin and activates nothing, silently.
+        platform_names = [n for kind, n in calls if kind == "platform"]
+        assert platform_names == ["msteams_bridge"]
+        assert ("tool", "msteams_bridge_status") in calls
     finally:
         import hermes_msteams_bridge.hermes_api as hermes_api
 

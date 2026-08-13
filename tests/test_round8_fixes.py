@@ -62,7 +62,7 @@ def test_service_background_workers_flag():
         await svc2.start()
         try:
             assert {t.get_name() for t in svc2._tasks} == {
-                "teams_call_reaper", "teams_call_job_resume",
+                "msteams_bridge_reaper", "msteams_bridge_job_resume",
             }
         finally:
             await svc2.stop()
@@ -116,8 +116,8 @@ def test_connect_mirrors_allowlist_into_gateway_env(monkeypatch):
 
     cfg = TeamsVoiceConfig(shared_secret="s", allowlist=("aad-1", "aad-2"), allow_all=True)
     monkeypatch.setattr(config_mod, "resolve_config", lambda extra=None: cfg)
-    monkeypatch.delenv("TEAMS_CALL_ALLOWLIST", raising=False)
-    monkeypatch.delenv("TEAMS_CALL_ALLOW_ALL", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_ALLOWLIST", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_ALLOW_ALL", raising=False)
 
     class _Svc:
         def __init__(self, *a, **k): ...
@@ -132,8 +132,8 @@ def test_connect_mirrors_allowlist_into_gateway_env(monkeypatch):
     import os
 
     asyncio.run(cls.connect(adapter))
-    assert os.environ["TEAMS_CALL_ALLOWLIST"] == "aad-1,aad-2"
-    assert os.environ["TEAMS_CALL_ALLOW_ALL"] == "1"
+    assert os.environ["MSTEAMS_BRIDGE_ALLOWLIST"] == "aad-1,aad-2"
+    assert os.environ["MSTEAMS_BRIDGE_ALLOW_ALL"] == "1"
 
 
 # ── P2: honest status verdict ────────────────────────────────────────────────
@@ -145,7 +145,7 @@ def test_status_ok_is_false_when_unconfigured(monkeypatch):
     monkeypatch.setattr(
         tools_mod, "resolve_config", lambda: TeamsVoiceConfig(shared_secret="")
     )
-    payload = json.loads(tools_mod.handle_teams_call_status())
+    payload = json.loads(tools_mod.handle_msteams_bridge_status())
     assert payload["configured"] is False
     assert payload["ok"] is False
     assert "port_active" in payload
@@ -172,7 +172,7 @@ def test_consult_passes_stable_task_id():
     consult._agent = _Agent()
     assert consult._run_locked("look this up") == "done"
     assert seen["task_id"] == consult.browser_task_id
-    assert consult.browser_task_id.startswith("teams_call:consult:")
+    assert consult.browser_task_id.startswith("msteams_bridge:consult:")
 
 
 def test_consult_falls_back_to_chat_on_old_host():
@@ -209,7 +209,7 @@ def test_browser_frame_uses_consult_task_id_and_content_dedupe(tmp_path, monkeyp
     monkeypatch.setattr(hermes_api, "dispatch_tool_async", fake_dispatch)
 
     class _Consult:
-        browser_task_id = "teams_call:consult:test"
+        browser_task_id = "msteams_bridge:consult:test"
 
     class _Handler:
         _consult = _Consult()
@@ -219,7 +219,7 @@ def test_browser_frame_uses_consult_task_id_and_content_dedupe(tmp_path, monkeyp
     assert first is not None
     frame, digest = first
     name, args, kw = calls[0]
-    assert kw["task_id"] == "teams_call:consult:test"
+    assert kw["task_id"] == "msteams_bridge:consult:test"
     assert "task_id" not in args  # in args the host silently ignores it
     # Same content, fresh call: content-based dedupe must suppress it even
     # though Hermes would have written a new screenshot file.
