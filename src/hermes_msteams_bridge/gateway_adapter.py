@@ -1,11 +1,11 @@
 """Phase 2b — gateway-resident platform adapter (spike verdict: GO).
 
-``teams_call`` registers as a real gateway platform: ``connect()`` hosts the
+``msteams_bridge`` registers as a real gateway platform: ``connect()`` hosts the
 bridge (a thin shell over :class:`~.service.VoiceBridgeService`, whose
 lifecycle contract the ADR-6 spike proved), ``disconnect()`` stops it, and
 ``send()`` delivers text BY VOICE — into a live call when one exists for the
 chat, else as a place-call-and-speak call-back. ``standalone_sender_fn`` gives
-cron ``deliver=teams_call`` the same semantics from any process.
+cron ``deliver=msteams_bridge`` the same semantics from any process.
 
 Import discipline: this module is the ONE place allowed to import
 ``gateway.platforms.base`` / ``gateway.config`` — the sanctioned surface the
@@ -23,7 +23,7 @@ Modes under the gateway:
   back through ``send()`` and is spoken. ``AgentConsult`` remains only for
   standalone ``serve`` and the realtime consult tool.
 
-``hermes teams-call serve`` remains the standalone fallback (two-process
+``hermes msteams-bridge serve`` remains the standalone fallback (two-process
 model), unchanged.
 """
 
@@ -78,17 +78,17 @@ async def deliver_by_voice(chat_id: str, message: str, thread_id: str = "") -> d
                 await speak(message)
                 return {"success": True, "message_id": None, "mode": "live-call"}
             except Exception as exc:  # noqa: BLE001
-                logger.warning("[teams_call] live-call speak failed: %s", exc)
+                logger.warning("[msteams_bridge] live-call speak failed: %s", exc)
 
     cfg = resolve_config()
     if not cfg.configured:
-        return {"error": "teams_call is not configured (no shared secret)"}
+        return {"error": "msteams_bridge is not configured (no shared secret)"}
     aad_id = (chat_id or "").strip().lower()
     # Outbound dialing keeps call_user's posture: explicit allowlist only.
     if not cfg.allowlist or aad_id not in cfg.allowlist:
-        return {"error": "voice delivery requires the callee on an explicit teams_call allowlist"}
+        return {"error": "voice delivery requires the callee on an explicit msteams_bridge allowlist"}
     if not cfg.tenant_id:
-        return {"error": "no tenant configured (set TEAMS_CALL_TENANT_ID)"}
+        return {"error": "no tenant configured (set MSTEAMS_BRIDGE_TENANT_ID)"}
     # Same sliding-hour dial budget as call_user (round 8): cron/gateway
     # call-backs must not be an unmetered outbound-dial path.
     from .tools import _call_user_rate_ok, _call_user_rate_record
@@ -110,7 +110,7 @@ async def deliver_by_voice(chat_id: str, message: str, thread_id: str = "") -> d
         return {"error": "the worker accepted the request but returned no callId"}
     _call_user_rate_record()  # success-only, same policy as call_user
     _pending_set(call_id, message, thread_id=thread_id or "")
-    logger.info("[teams_call] AUDIT voice delivery: callee=%s callId=%s", aad_id, call_id)
+    logger.info("[msteams_bridge] AUDIT voice delivery: callee=%s callId=%s", aad_id, call_id)
     return {"success": True, "message_id": call_id, "mode": "call-back"}
 
 
@@ -118,7 +118,7 @@ async def standalone_voice_send(
     pconfig: Any, chat_id: str, message: str, *, thread_id: str | None = None,
     media_files: Any = None, force_document: bool = False,
 ) -> dict:
-    """``PlatformEntry.standalone_sender_fn``: cron ``deliver=teams_call``
+    """``PlatformEntry.standalone_sender_fn``: cron ``deliver=msteams_bridge``
     calls the user and speaks the message. ``media_files`` accepted for
     signature parity; voice delivery is text-only."""
     return await deliver_by_voice(chat_id, message, thread_id or "")
@@ -134,10 +134,8 @@ async def _respond_managed_chat(cfg, message) -> str:
     Same model as the CLI path: one AgentConsult per Teams conversation so a chat keeps its context,
     LRU-capped because continuity lives in the stable session_id rather than the instance.
     """
-    import json as _json
-
     from .agent_consult import AgentConsult
-    from .managed_chat import attachments_note
+    from .managed_chat import build_turn_query
 
     key = f"{message.tenant_id}:{message.conversation_id}"
     consult = _MANAGED_CONSULTS.pop(key, None) or AgentConsult(session_id=f"msteams-chat:{key}")
@@ -145,12 +143,9 @@ async def _respond_managed_chat(cfg, message) -> str:
     while len(_MANAGED_CONSULTS) > _MANAGED_CONSULTS_MAX:
         _MANAGED_CONSULTS.pop(next(iter(_MANAGED_CONSULTS)))
 
-    note = attachments_note(message.attachments)
-    card = (
-        f"[card button pressed - submit payload: {_json.dumps(message.card_action)}]"
-        if message.card_action else ""
-    )
-    query = "\n".join(x for x in (message.text, card, note) if x)
+    # Shared with the CLI path (attachments, card submits, voice-message transcription) so the two
+    # hosting paths cannot drift apart on what a message even says.
+    query = await build_turn_query(message, cfg)
     return await consult.ask(query, timeout_s=280.0)
 
 
@@ -178,7 +173,7 @@ def get_adapter_class() -> Any:
 
             cfg = resolve_config()
             if not cfg.configured:
-                logger.error("[teams_call] adapter: no shared secret configured")
+                logger.error("[msteams_bridge] adapter: no shared secret configured")
                 return False
             # Gateway authorization reads only the PlatformEntry env names
             # (allowed_users_env / allow_all_env) — it cannot see the plugin
@@ -186,18 +181,18 @@ def get_adapter_class() -> Any:
             # vars so a caller the bridge admits is also authorized for agent
             # turns (round 8: config-block allowlist/allow_all users were
             # admitted to the call, then denied by the gateway).
-            if cfg.allowlist and not os.getenv("TEAMS_CALL_ALLOWLIST", "").strip():
-                os.environ["TEAMS_CALL_ALLOWLIST"] = ",".join(cfg.allowlist)
-            if cfg.allow_all and not os.getenv("TEAMS_CALL_ALLOW_ALL", "").strip():
-                os.environ["TEAMS_CALL_ALLOW_ALL"] = "1"
+            if cfg.allowlist and not os.getenv("MSTEAMS_BRIDGE_ALLOWLIST", "").strip():
+                os.environ["MSTEAMS_BRIDGE_ALLOWLIST"] = ",".join(cfg.allowlist)
+            if cfg.allow_all and not os.getenv("MSTEAMS_BRIDGE_ALLOW_ALL", "").strip():
+                os.environ["MSTEAMS_BRIDGE_ALLOW_ALL"] = "1"
             factory = _handler_factory(cfg, adapter=self)
             service = VoiceBridgeService(cfg, handler_factory=factory)
             try:
                 await service.start()  # loud on bind conflict (spike criterion 2)
             except OSError as exc:
                 logger.error(
-                    "[teams_call] adapter: port %s:%s unavailable (%s) — is a "
-                    "standalone `hermes teams-call serve` already running?",
+                    "[msteams_bridge] adapter: port %s:%s unavailable (%s) — is a "
+                    "standalone `hermes msteams-bridge serve` already running?",
                     cfg.host, cfg.port, exc,
                 )
                 return False
@@ -214,14 +209,14 @@ def get_adapter_class() -> Any:
                 )
                 if self._managed_chat is not None:
                     logger.info(
-                        "[teams_call] managed chat lane on %s:%s%s",
+                        "[msteams_bridge] managed chat lane on %s:%s%s",
                         cfg.managed_chat_host, cfg.managed_chat_port, cfg.managed_chat_path,
                     )
             except Exception:
-                logger.exception("[teams_call] managed chat lane failed to start; voice continues")
+                logger.exception("[msteams_bridge] managed chat lane failed to start; voice continues")
 
             self._mark_connected()
-            logger.info("[teams_call] gateway-resident bridge on %s:%s", cfg.host, cfg.port)
+            logger.info("[msteams_bridge] gateway-resident bridge on %s:%s", cfg.host, cfg.port)
             return True
 
         async def disconnect(self) -> None:
@@ -277,7 +272,7 @@ def get_adapter_class() -> Any:
                 )
                 if result.get("success"):
                     return SendResult(success=True, message_id=result.get("message_id"))
-                logger.warning("[teams_call] file card failed: %s", result.get("error"))
+                logger.warning("[msteams_bridge] file card failed: %s", result.get("error"))
             return await super().send_document(
                 chat_id, file_path, caption=caption, file_name=file_name,
                 reply_to=reply_to, metadata=metadata, **kwargs,
@@ -313,40 +308,27 @@ def _handler_factory(cfg: Any, adapter: Any):
     return factory
 
 
-#: The platform name the portal, the installer and the docs all write. Must match the plugin entry point.
-PLATFORM_NAME = "msteams_call"
-#: The pre-rename name, still accepted so a config written against the published 0.4.0 keeps working.
-PLATFORM_NAME_LEGACY = "teams_call"
+#: The platform name the portal, the installer and the docs all write. Must match the plugin entry point
+#: and the ``platforms.<name>.enabled`` key in config.yaml, or the plugin loads and activates nothing.
+PLATFORM_NAME = "msteams_bridge"
 
 
 def register_platform(ctx: Any) -> None:
-    """Register the gateway platform (best-effort: older hosts lack the API).
-
-    Registered under BOTH names. The plugin entry point was renamed to ``msteams_call`` and the portal,
-    the installer and every doc write ``platforms.msteams_call.enabled: true`` - but the platform itself
-    was still registered as ``teams_call``, so that config loaded the plugin and then activated nothing.
-    Voice and managed chat both stayed silent, with no error to read: the host simply had no platform by
-    that name. The alias keeps configs written against the published 0.4.0 working.
-    """
-    for name in (PLATFORM_NAME, PLATFORM_NAME_LEGACY):
-        _register_one(ctx, name)
-
-
-def _register_one(ctx: Any, name: str) -> None:
+    """Register the gateway platform (best-effort: older hosts lack the API)."""
     try:
         ctx.register_platform(
-            name=name,
+            name=PLATFORM_NAME,
             label="Teams Call (CVI)",
             adapter_factory=lambda cfg: get_adapter_class()(cfg),
             check_fn=_check_requirements,
             # Without this, aiohttp's mere presence reads as "configured"
             # (round 8): validate against the resolved shared secret instead.
             validate_config=_validate_config,
-            required_env=["TEAMS_CALL_SHARED_SECRET"],
-            allowed_users_env="TEAMS_CALL_ALLOWLIST",
-            allow_all_env="TEAMS_CALL_ALLOW_ALL",
+            required_env=["MSTEAMS_BRIDGE_SHARED_SECRET"],
+            allowed_users_env="MSTEAMS_BRIDGE_ALLOWLIST",
+            allow_all_env="MSTEAMS_BRIDGE_ALLOW_ALL",
             standalone_sender_fn=standalone_voice_send,
-            cron_deliver_env_var="TEAMS_CALL_HOME_AAD",
+            cron_deliver_env_var="MSTEAMS_BRIDGE_HOME_AAD",
             platform_hint=(
                 "You are delivering by VOICE on a Microsoft Teams call: replies are "
                 "spoken aloud. Keep them brief and conversational."
@@ -354,7 +336,7 @@ def _register_one(ctx: Any, name: str) -> None:
             emoji="📞",
         )
     except (AttributeError, TypeError) as exc:
-        logger.info("[%s] platform registration unavailable on this host: %s", name, exc)
+        logger.info("[%s] platform registration unavailable on this host: %s", PLATFORM_NAME, exc)
 
 
 def _check_requirements() -> bool:

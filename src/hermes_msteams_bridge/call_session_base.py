@@ -36,7 +36,7 @@ def _pending_dir():
     try:
         from .hermes_api import hermes_home
 
-        d = hermes_home() / "cache" / "teams_call" / "pending_outbound"
+        d = hermes_home() / "cache" / "msteams_bridge" / "pending_outbound"
         d.mkdir(parents=True, exist_ok=True)
         return d
     except Exception:  # noqa: BLE001 — no Hermes home: fall back in-process
@@ -102,7 +102,7 @@ def _pending_set(
             tmp.rename(d / f"{_safe_call_key(call_id)}.json")  # atomic publish
             return
         except OSError:
-            logger.warning("[teams_call] pending store write failed; using in-process", exc_info=True)
+            logger.warning("[msteams_bridge] pending store write failed; using in-process", exc_info=True)
     # thread_id rides along so the outcome/stale fallback works from the
     # in-process store too (round 13) - not only from the file store.
     _PENDING_OUTBOUND[call_id] = (text, thread_id, time.monotonic() + _PENDING_TTL_S)
@@ -145,6 +145,11 @@ class BaseTeamsCallHandler(CallSessionHandler):
         self._pending_greeting: str | None = None
         self._meeting = MeetingTranscript()
         self._consult = AgentConsult()
+        # Unmixed-audio attribution: the display name the worker stamped on the
+        # most recent ``audio.frame``. Both brains keep it (the realtime one to
+        # tell the model who is talking, the streaming one to label the agent
+        # turn), so it lives here rather than in one of them.
+        self._last_speaker = ""
         wake = tuple(bridge_config.wake_phrases) if (bridge_config and bridge_config.wake_phrases) else ("assistant", "hermes")
         self._gate_cfg = group_call_gate.GroupCallGateConfig(wake_phrases=wake)
         self._last_addressed_ms: float | None = None
@@ -205,7 +210,7 @@ class BaseTeamsCallHandler(CallSessionHandler):
         elif self._bridge and not caller_allowed(
             self._bridge, msg.caller.aad_id, msg.caller.display_name
         ):
-            logger.info("[teams_call] caller not allowlisted; rejecting %s", session.call_id)
+            logger.info("[msteams_bridge] caller not allowlisted; rejecting %s", session.call_id)
             await session._ws.close()
             return False
         scope = self._bridge.session_scope if self._bridge else "per-call"
@@ -375,7 +380,7 @@ async def deliver_outcome(
     # was still valid and sent the caller a "couldn't reach you" for a call that had not failed. The
     # 180s stale timer remains the safety net for a genuine no-answer we were never told about.
     if outcome not in UNANSWERED_OUTCOMES:
-        logger.info("[teams_call] ignoring unknown call outcome %r for call=%s", outcome, call_id)
+        logger.info("[msteams_bridge] ignoring unknown call outcome %r for call=%s", outcome, call_id)
         return {"ok": True, "ignored": True, "reason": "unknown outcome"}
     claimed = claim_pending(call_id)
     deadline = time.monotonic() + max(0.0, grace_s)
@@ -389,7 +394,7 @@ async def deliver_outcome(
     if not thread_id:
         if claim is not None:
             claim.unlink(missing_ok=True)  # nothing to deliver to — expire
-        logger.info("[teams_call] outcome %s for %s: no chat fallback target", outcome, call_id)
+        logger.info("[msteams_bridge] outcome %s for %s: no chat fallback target", outcome, call_id)
         return {"ok": True, "delivered": False}
     lead = _OUTCOME_WORDING.get(outcome, _OUTCOME_WORDING["failed"])
     body = f"\U0001F4DE {lead} Here's what I had: {text}"
@@ -417,12 +422,12 @@ async def deliver_outcome(
         if result.get("success"):
             if claim is not None:
                 claim.unlink(missing_ok=True)
-            logger.info("[teams_call] outcome %s: chat fallback delivered to %s", outcome, thread_id)
+            logger.info("[msteams_bridge] outcome %s: chat fallback delivered to %s", outcome, thread_id)
             return {"ok": True, "delivered": True}
         if claim is not None and claim.exists():
             claim.rename(claim.with_suffix(".json"))  # reaper retries later
         logger.warning(
-            "[teams_call] outcome %s: chat fallback failed (kept for retry): %s",
+            "[msteams_bridge] outcome %s: chat fallback failed (kept for retry): %s",
             outcome, result.get("error"),
         )
     except OSError:
@@ -461,11 +466,11 @@ async def deliver_stale_pending() -> int:
             if result.get("success"):
                 claim.unlink(missing_ok=True)
                 delivered += 1
-                logger.info("[teams_call] no-answer fallback delivered to %s", thread_id)
+                logger.info("[msteams_bridge] no-answer fallback delivered to %s", thread_id)
             else:
                 if claim.exists():
                     claim.rename(claim.with_suffix(".json"))  # keep for retry
-                logger.warning("[teams_call] no-answer fallback failed (kept for retry): %s", result.get("error"))
+                logger.warning("[msteams_bridge] no-answer fallback failed (kept for retry): %s", result.get("error"))
         except OSError:
             pass
     return delivered

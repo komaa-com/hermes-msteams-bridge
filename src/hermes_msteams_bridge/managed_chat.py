@@ -181,6 +181,42 @@ def attachments_note(attachments: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+async def build_turn_query(message: InboundChat, cfg: Any) -> str:
+    """The agent's question for ONE inbound chat message.
+
+    Shared by BOTH hosting paths - ``hermes msteams-bridge serve`` and the gateway-resident adapter -
+    so a message cannot read differently depending on which process is carrying the lane. The two
+    used to build this string separately, which is exactly how a capability ends up wired on one path
+    and missing on the other.
+
+    Order is load-bearing. The voice note sits AHEAD of the attachment note so the transcribed words
+    arrive as content and the file listing reads as trailing metadata. The attachment note is built
+    independently of transcription, so every clip keeps its placeholder in the turn no matter what
+    happened to it - including when transcription is off.
+
+    Transcription is awaited INSIDE the turn, so it adds latency to the reply rather than running in
+    the background; it is off by default, and off costs nothing.
+    """
+    from .voice_messages import transcribe_voice_messages
+
+    attachment_note = attachments_note(message.attachments)
+    # Card submits arrive with EMPTY text and the payload in card_action (protocol v1 additive
+    # field): fold it in so a button press is a meaningful turn, not "I didn't catch that".
+    card_note = (
+        f"[card button pressed - submit payload: {json.dumps(message.card_action)}]"
+        if message.card_action
+        else ""
+    )
+    # Voice messages: transcribe and fold the words in, so "listen to this" is a question the agent
+    # can answer instead of a filename it can only read back.
+    voice_note = await transcribe_voice_messages(
+        message.attachments,
+        enabled=cfg.transcribe_voice_messages,
+        gateway_origin=cfg.managed_chat_gateway_reply_url,
+    )
+    return "\n".join(x for x in (message.text, card_note, voice_note, attachment_note) if x)
+
+
 @dataclass
 class ManagedChatConfig:
     """Config for the managed chat lane. Disabled unless the chat secret is set
@@ -483,9 +519,9 @@ async def start_managed_chat_if_configured(cfg, respond) -> "ManagedChatServer |
     """Start the StandIn Managed Bot chat lane when a secret is configured; return None otherwise.
 
     Lives here, not in a caller, because there are TWO hosting paths and they must behave
-    identically: ``hermes teams-call serve`` (standalone) and the gateway-resident platform adapter.
+    identically: ``hermes msteams-bridge serve`` (standalone) and the gateway-resident platform adapter.
     The lane originally started only in the CLI path, so anyone running the gateway-hosted platform -
-    the default once ``platforms.teams_call.enabled`` is set - got voice with silently no chat.
+    the default once ``platforms.msteams_bridge.enabled`` is set - got voice with silently no chat.
     """
     if not cfg.managed_chat_secret:
         return None

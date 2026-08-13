@@ -54,7 +54,7 @@ class CallToolRunner:
             if name == "post_chat_message":
                 return await self._post_chat_message(str(args.get("text", "")))
         except Exception:  # noqa: BLE001 — a tool fault must not break the call
-            logger.error("[teams_call] tool %s failed", name, exc_info=True)
+            logger.error("[msteams_bridge] tool %s failed", name, exc_info=True)
             return "Sorry, that didn't work."
         return f"Unknown tool: {name}."
 
@@ -245,7 +245,7 @@ class CallToolRunner:
                 return f"Stopped after {shown} of {len(paths)} images."
             return "I'm showing it on screen now." if shown == 1 else f"Showing you {shown} images."
         except Exception:  # noqa: BLE001
-            logger.error("[teams_call] show_to_caller failed", exc_info=True)
+            logger.error("[msteams_bridge] show_to_caller failed", exc_info=True)
             return "I made the image but couldn't display it."
 
     def _show_root(self) -> Path | None:
@@ -259,7 +259,7 @@ class CallToolRunner:
             # Default is a DEDICATED presentation directory, not the whole
             # workspace: a benign-looking filename in a broad root is still a
             # disclosure. Operators widen it explicitly via show_file_root.
-            return hermes_home() / "workspace" / "teams_call_show"
+            return hermes_home() / "workspace" / "msteams_bridge_show"
         except Exception:  # noqa: BLE001 — no Hermes home (bare install)
             return None
 
@@ -285,7 +285,7 @@ class CallToolRunner:
         except ShowFileError as exc:
             return exc.spoken
         except Exception:  # noqa: BLE001 — render failure must not break the call
-            logger.error("[teams_call] show_file failed", exc_info=True)
+            logger.error("[msteams_bridge] show_file failed", exc_info=True)
             return "I couldn't display that file."
         if len(data) > 6 * 1024 * 1024:  # keep the WS frame bounded post-base64
             return "That file renders too large to put on screen."
@@ -315,7 +315,7 @@ class CallToolRunner:
             return reason
         # Call-scoped browser session: without a task_id every call shares
         # Hermes's "default" session (cookies + navigation collisions).
-        task_id = f"teams_call:{getattr(h._session, 'call_id', '') or 'call'}"
+        task_id = f"msteams_bridge:{getattr(h._session, 'call_id', '') or 'call'}"
         try:
             result = await asyncio.wait_for(
                 browser_page_screenshot(url, task_id=task_id), timeout=45.0
@@ -452,7 +452,7 @@ class CallToolRunner:
                 allow_remote=h._bridge.allow_remote_worker,
             )
         except OutboundError as exc:
-            logger.warning("[teams_call] call_me_back failed: %s", exc)
+            logger.warning("[msteams_bridge] call_me_back failed: %s", exc)
             return "I couldn't place the call-back just now."
         call_id = result.get("callId")
         if not call_id:
@@ -592,7 +592,7 @@ class CallToolRunner:
         try:
             result = await h._consult.ask(query, timeout_s=300.0)
         except Exception:  # noqa: BLE001
-            logger.error("[teams_call] background task failed", exc_info=True)
+            logger.error("[msteams_bridge] background task failed", exc_info=True)
             result = "I couldn't complete that task."
         # Prefer delivering the result to the Teams chat (no call-back needed);
         # fall back to a voice call-back when there's no postable thread.
@@ -617,7 +617,7 @@ class CallToolRunner:
                 allow_remote=h._bridge.allow_remote_worker,
             )
         except OutboundError as exc:
-            logger.warning("[teams_call] background callback failed: %s", exc)
+            logger.warning("[msteams_bridge] background callback failed: %s", exc)
             return
         cid = res.get("callId")
         if cid:

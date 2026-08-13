@@ -1,4 +1,4 @@
-name: msteams_call
+name: msteams_bridge
 version: 0.5.0
 description: >-
   Microsoft Teams real-time voice/video (CVI) bridge driver. Hosts an
@@ -15,71 +15,73 @@ kind: standalone
 # Pure-Python driver: runs anywhere Hermes runs. The StandIn media bridge it
 # pairs with is a separate, hosted process reached over the WebSocket.
 provides_tools:
-  - teams_call_status
+  - msteams_bridge_status
   - call_user
 hooks:
   - on_session_end
 optional_env:
-  - name: TEAMS_CALL_SHARED_SECRET
+  - name: MSTEAMS_BRIDGE_SHARED_SECRET
     description: "HMAC secret shared with the StandIn media bridge (must equal the value paired in StandIn)."
     password: true
-  - name: TEAMS_CALL_HOST
+  - name: MSTEAMS_BRIDGE_HOST
     description: "Bind address for the bridge WebSocket server (default 127.0.0.1)."
-  - name: TEAMS_CALL_PORT
+  - name: MSTEAMS_BRIDGE_PORT
     description: "Port for the bridge WebSocket server (default 8443)."
-  - name: TEAMS_CALL_ALLOWLIST
-    description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless TEAMS_CALL_ALLOW_ALL is set)."
-  - name: TEAMS_CALL_ALLOW_ALL
+  - name: MSTEAMS_BRIDGE_ALLOWLIST
+    description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless MSTEAMS_BRIDGE_ALLOW_ALL is set)."
+  - name: MSTEAMS_BRIDGE_ALLOW_ALL
     description: "Explicit opt-in to accept any inbound caller when the allowlist is empty (default false = deny)."
-  - name: TEAMS_CALL_WAKE_PHRASES
+  - name: MSTEAMS_BRIDGE_WAKE_PHRASES
     description: "Comma-separated group-call wake phrases (default: assistant,hermes)."
-  - name: TEAMS_CALL_MEETING_RECAP
+  - name: MSTEAMS_BRIDGE_MEETING_RECAP
     description: "Post end-of-call meeting minutes to the Teams chat (true/false)."
-  - name: TEAMS_CALL_MAX_VISION_PER_MINUTE
+  - name: MSTEAMS_BRIDGE_MAX_VISION_PER_MINUTE
     description: "Per-call vision spend cap across look_at_screen + ambient push (0 = unlimited)."
-  - name: TEAMS_CALL_SESSION_SCOPE
+  - name: MSTEAMS_BRIDGE_SESSION_SCOPE
     description: "Agent session continuity: per-call | per-thread | per-aad."
-  - name: MSTEAMS_CALL_SECRET
-    description: "The single StandIn connection secret - covers calling AND chat. Paste the value from the StandIn portal; per-lane MSTEAMS_CALL_CALLING_SECRET / MSTEAMS_CALL_MESSAGES_SECRET override it when set."
+  - name: MSTEAMS_BRIDGE_SECRET
+    description: "The single StandIn connection secret - covers calling AND chat. Paste the value from the StandIn portal; per-lane MSTEAMS_BRIDGE_CALLING_SECRET / MSTEAMS_BRIDGE_MESSAGES_SECRET override it when set."
     password: true
-  - name: TEAMS_CALL_MANAGED_BOT_SECRET
+  - name: MSTEAMS_BRIDGE_MANAGED_BOT_SECRET
     description: "StandIn Managed Bot connection: the chat lane's CHAT key (separate from the voice shared secret). Unset = the chat lane stays off and voice is unaffected."
     password: true
-  - name: TEAMS_CALL_MANAGED_BOT_HOST
+  - name: MSTEAMS_BRIDGE_MANAGED_BOT_HOST
     description: "Bind address for the managed chat endpoint (default 0.0.0.0)."
-  - name: TEAMS_CALL_MANAGED_BOT_PORT
+  - name: MSTEAMS_BRIDGE_MANAGED_BOT_PORT
     description: "Port for the managed chat endpoint (default 8444)."
-  - name: TEAMS_CALL_MANAGED_BOT_PATH
+  - name: MSTEAMS_BRIDGE_MANAGED_BOT_PATH
     description: "Path the StandIn gateway POSTs inbound messages to (default /managed/chat)."
-  - name: TEAMS_CALL_MANAGED_BOT_GATEWAY_REPLY_URL
+  - name: MSTEAMS_BRIDGE_MANAGED_BOT_GATEWAY_REPLY_URL
     description: "StandIn gateway reply endpoint the agent POSTs answers back to (default https://teams.standin.komaa.com/api/chat/reply)."
-  - name: TEAMS_CALL_WORKER_BASE_URL
+  - name: MSTEAMS_BRIDGE_TRANSCRIBE_VOICE_MESSAGES
+    description: "Opt-in: transcribe inbound Teams voice messages on the chat lane and fold the words into the turn (default false - each clip is a paid STT call and a voice note can run for minutes). Uses the STT provider already configured under stt.provider."
+  - name: MSTEAMS_BRIDGE_WORKER_BASE_URL
     description: "Loopback HTTP endpoint the StandIn media bridge exposes for outbound place-call (default http://127.0.0.1:9440)."
-  - name: TEAMS_CALL_TENANT_ID
+  - name: MSTEAMS_BRIDGE_TENANT_ID
     description: "Default Azure AD tenant for outbound calls (falls back to TEAMS_TENANT_ID)."
-  - name: TEAMS_CALL_REALTIME_BACKEND
+  - name: MSTEAMS_BRIDGE_REALTIME_BACKEND
     description: "Realtime speech provider: azure | openai."
-  - name: TEAMS_CALL_AZURE_ENDPOINT
+  - name: MSTEAMS_BRIDGE_AZURE_ENDPOINT
     description: "Azure OpenAI resource endpoint for the realtime model."
-  - name: TEAMS_CALL_AZURE_DEPLOYMENT
+  - name: MSTEAMS_BRIDGE_AZURE_DEPLOYMENT
     description: "Azure realtime deployment name (e.g. gpt-realtime)."
-  - name: TEAMS_CALL_AZURE_API_VERSION
+  - name: MSTEAMS_BRIDGE_AZURE_API_VERSION
     description: "Azure realtime API version (e.g. 2025-04-01-preview)."
-  - name: TEAMS_CALL_REALTIME_VOICE
+  - name: MSTEAMS_BRIDGE_REALTIME_VOICE
     description: "Realtime voice name (e.g. cedar)."
-  - name: TEAMS_CALL_LANGUAGES
+  - name: MSTEAMS_BRIDGE_LANGUAGES
     description: "Comma-separated languages the realtime assistant handles (e.g. en,fr,de,ar). Empty = auto-detect and mirror the caller."
-  - name: TEAMS_CALL_BILINGUAL
-    description: "DEPRECATED alias for TEAMS_CALL_LANGUAGES=ar,en."
-  - name: TEAMS_CALL_ALLOWLIST_ALLOW_NAMES
+  - name: MSTEAMS_BRIDGE_BILINGUAL
+    description: "DEPRECATED alias for MSTEAMS_BRIDGE_LANGUAGES=ar,en."
+  - name: MSTEAMS_BRIDGE_ALLOWLIST_ALLOW_NAMES
     description: "Also match the allowlist against caller display names (weaker; default false)."
-  - name: TEAMS_CALL_ALLOW_REMOTE_WORKER
+  - name: MSTEAMS_BRIDGE_ALLOW_REMOTE_WORKER
     description: "Permit outbound place-call to a non-loopback endpoint (default false)."
-  - name: TEAMS_CALL_REQUIRE_RECORDING_STATUS
+  - name: MSTEAMS_BRIDGE_REQUIRE_RECORDING_STATUS
     description: "Gate media processing until Teams recording is active (default true)."
   - name: TEAMS_SHAREPOINT_SITE_ID
     description: "Optional; reserved for a future large-file SharePoint delivery path. The minutes .docx file card itself needs no SharePoint - it uses the Bot Framework attachment contract with the bot credentials."
-  - name: TEAMS_CALL_WATCH_BROWSER_TASKS
+  - name: MSTEAMS_BRIDGE_WATCH_BROWSER_TASKS
     description: "Opt-in: while a background task runs, periodically show the agent's live browser on the tile (each capture may invoke the auxiliary vision model - cost-bearing; throttled to 10 s)."
-  - name: TEAMS_CALL_SHOW_FILE_ROOT
-    description: "Root directory show_file may display from (containment; default <hermes home>/workspace/teams_call_show - a dedicated presentation dir). Everything outside it is refused."
+  - name: MSTEAMS_BRIDGE_SHOW_FILE_ROOT
+    description: "Root directory show_file may display from (containment; default <hermes home>/workspace/msteams_bridge_show - a dedicated presentation dir). Everything outside it is refused."

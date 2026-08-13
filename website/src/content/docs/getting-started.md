@@ -64,22 +64,22 @@ uv pip install --python /path/to/hermes/venv/bin/python "hermes-msteams-bridge[n
 
 ## 2. Enable the plugin
 
-Entry-point plugins are **opt-in**. Add `msteams_call` to `plugins.enabled` in
+Entry-point plugins are **opt-in**. Add `msteams_bridge` to `plugins.enabled` in
 `~/.hermes/config.yaml`:
 
 ```yaml
 plugins:
   enabled:
-    - msteams_call
+    - msteams_bridge
 ```
 
 :::caution[Pip plugins are enabled in config.yaml only]
 **`hermes plugins enable` does NOT work for pip-installed plugins** - it only sees
-bundled/user-dir plugins. You must add `msteams_call` to `plugins.enabled` in
+bundled/user-dir plugins. You must add `msteams_bridge` to `plugins.enabled` in
 `config.yaml` as above.
 :::
 
-Confirm Hermes now sees it (`msteams_call` should appear in the list):
+Confirm Hermes now sees it (`msteams_bridge` should appear in the list):
 
 ```bash
 hermes plugins list
@@ -88,7 +88,7 @@ hermes plugins list
 Then check the resolved config + readiness:
 
 ```bash
-hermes msteams-call status
+hermes msteams-bridge status
 ```
 
 ## 3. Configure the shared secret + provider
@@ -101,13 +101,13 @@ referenced with `${VAR}`.
 ```yaml
 plugins:
   enabled:
-    - msteams_call
+    - msteams_bridge
   entries:
-    msteams_call:
+    msteams_bridge:
       config:
         # ONE connection secret from the StandIn portal, covering calling AND messages.
         # (Bring-your-own-bot deployments set `calling_secret` instead.)
-        secret: ${MSTEAMS_CALL_SECRET}
+        secret: ${MSTEAMS_BRIDGE_SECRET}
         host: 127.0.0.1                 # both lanes; the tunnel terminates TLS and proxies here
         calling_port: 8443
         messages_port: 8444
@@ -120,19 +120,19 @@ plugins:
           voice: alloy
           api_key: ${OPENAI_API_KEY}
 platforms:
-  msteams_call:
+  msteams_bridge:
     enabled: true   # the gateway HOSTS the bridge. Without this the plugin loads and nothing listens.
 ```
 
 `~/.hermes/.env`:
 
 ```bash
-MSTEAMS_CALL_SECRET=<the connection secret from StandIn>
+MSTEAMS_BRIDGE_SECRET=<the connection secret from StandIn>
 OPENAI_API_KEY=<your-openai-key>
 ```
 
 :::caution[Two switches, not one]
-`plugins.enabled` loads the plugin; `platforms.msteams_call.enabled` activates it under
+`plugins.enabled` loads the plugin; `platforms.msteams_bridge.enabled` activates it under
 `hermes gateway run`. Setting only the first is the most common way to end up with a bridge that
 starts cleanly, reports no error, and never listens on either lane.
 :::
@@ -147,7 +147,7 @@ required:
 1. Go to [standin.komaa.com/sandbox](https://standin.komaa.com/sandbox).
 2. Generate a Teams meeting link; a shared StandIn bot joins that meeting.
 3. Copy the **shared secret** the sandbox gives you into
-   `TEAMS_CALL_SHARED_SECRET`.
+   `MSTEAMS_BRIDGE_SHARED_SECRET`.
 
 The sandbox is time-limited (about 5 minutes/day per session) - perfect for a first
 run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) for all three tiers.
@@ -155,13 +155,13 @@ run. See [Connecting to StandIn](/hermes-msteams-bridge/connecting-to-standin/) 
 ## 5. Run the plugin
 
 ```bash
-hermes msteams-call serve --handler realtime
+hermes msteams-bridge serve --handler realtime
 ```
 
 You should see it bind:
 
 ```text
-[teams_call] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling/{call_id}
+[msteams_bridge] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling/{call_id}
 ```
 
 Other handlers: `--handler streaming` (STT→agent→TTS, needs `ffmpeg`),

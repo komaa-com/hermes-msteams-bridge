@@ -4,7 +4,7 @@ The gateway-residency spike (backlog criteria 1-4) demands lifecycle
 properties the old ``serve`` body could not demonstrate: readiness only after
 the listener accepts, loud dual-run failure, signal-free idempotent shutdown,
 and every owned task cancelled AND awaited. This service encodes those
-properties once; ``hermes teams-call serve`` uses it today, and a future
+properties once; ``hermes msteams-bridge serve`` uses it today, and a future
 gateway platform adapter would be a thin shell over it
 (``connect()`` = ``start()`` + ``_mark_connected()``, ``disconnect()`` =
 ``stop()``) — which is exactly what makes the spike measurable in tests.
@@ -71,12 +71,12 @@ class VoiceBridgeService:
             try:
                 await resume_pending_jobs()
             except Exception:  # noqa: BLE001
-                logger.error("[teams_call] job resume failed", exc_info=True)
+                logger.error("[msteams_bridge] job resume failed", exc_info=True)
 
         if self._background_workers:
             self._tasks = [
-                asyncio.create_task(_no_answer_reaper(), name="teams_call_reaper"),
-                asyncio.create_task(_resume_jobs(), name="teams_call_job_resume"),
+                asyncio.create_task(_no_answer_reaper(), name="msteams_bridge_reaper"),
+                asyncio.create_task(_resume_jobs(), name="msteams_bridge_job_resume"),
             ]
         self._ready = True
 

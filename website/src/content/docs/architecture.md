@@ -17,7 +17,7 @@ Teams call in the cloud and dials in, one WebSocket per call.
 flowchart TD
     Teams["Microsoft Teams call"]
     Bridge["StandIn media bridge<br/>(hosted service)"]
-    Plugin["msteams_call plugin (this repo)<br/>bridge_server.py: WS server, auth + lifecycle<br/>handlers.py: the call brain<br/>call_session_base.py: shared call state"]
+    Plugin["msteams_bridge plugin (this repo)<br/>bridge_server.py: WS server, auth + lifecycle<br/>handlers.py: the call brain<br/>call_session_base.py: shared call state"]
     Provider["realtime provider WS<br/>OpenAI / Azure Realtime<br/>24 kHz speech-to-speech"]
     Agent["the Hermes agent<br/>tools, consult/task, minutes, images"]
     Teams <-->|Teams media| Bridge
@@ -135,7 +135,7 @@ Contributor-level responsibilities (see also
 | `realtime_tools.py`, `call_tools.py`, `agent_consult.py` | The model-facing tools and their dispatch into Hermes. |
 | `meeting.py`, `meeting_docx.py` | Minutes/recap posted to the chat - attached as a Word `.docx` **file card** when the bot's Teams credentials are configured (the same Bot Framework attachment contract the Hermes Teams adapter uses), text otherwise; a local `.docx` artifact is always kept. `share_point_site_id` is reserved for a future large-file path (inline attachments cap at 4 MB). |
 | `outbound.py` | HMAC-signed place-call with the loopback SSRF guard. |
-| `cli.py`, `__init__.py`, `tools.py` | `hermes msteams-call serve|status`, plugin registration, the `teams_call_status` tool. |
+| `cli.py`, `__init__.py`, `tools.py` | `hermes msteams-bridge serve|status`, plugin registration, the `msteams_bridge_status` tool. |
 
 ## Trust and security model
 

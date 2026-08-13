@@ -6,7 +6,7 @@ Each surface is either **public** (a `PluginContext` service captured in
 the developer guides sanction) or a **documented resident**: a Hermes-internal
 import kept deliberately because no public equivalent exists. Residents are
 feature-probed at startup (:func:`probe_boundaries`) so a missing symbol
-surfaces in ``hermes teams-call status`` and the serve log, never mid-call.
+surfaces in ``hermes msteams-bridge status`` and the serve log, never mid-call.
 
 Residents (each with the reason no public surface covers it):
 
@@ -35,7 +35,7 @@ The probe distinguishes ``ok`` (the contract surface exists) from
 ``operational`` (the selected provider/config passes its own ``check_fn``):
 ``boundaries_ok`` can be true while e.g. TTS lacks an API key — status
 reports both. The probe imports heavyweight Hermes modules, so it runs on
-demand (``serve`` startup, ``teams-call status``), never per-call.
+demand (``serve`` startup, ``msteams-bridge status``), never per-call.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def llm() -> Any:
     try:
         return _ctx.llm
     except Exception:  # noqa: BLE001 — older host without the facade
-        logger.debug("[teams_call] ctx.llm unavailable", exc_info=True)
+        logger.debug("[msteams_bridge] ctx.llm unavailable", exc_info=True)
         return None
 
 
@@ -131,7 +131,7 @@ async def vision_ask(
     blocks: list[dict],
     *,
     max_tokens: int = 400,
-    purpose: str = "teams_call.vision",
+    purpose: str = "msteams_bridge.vision",
 ) -> str:
     """Answer a question about image/text blocks via the host-owned LLM.
 
@@ -141,7 +141,7 @@ async def vision_ask(
     """
     facade = llm()
     if facade is None:
-        logger.warning("[teams_call] vision unavailable: no ctx.llm facade")
+        logger.warning("[msteams_bridge] vision unavailable: no ctx.llm facade")
         return ""
     try:
         result = await facade.acomplete_structured(
@@ -152,7 +152,7 @@ async def vision_ask(
         )
         return (result.text or "").strip()
     except Exception:  # noqa: BLE001 — vision must never crash the call
-        logger.error("[teams_call] vision consult failed", exc_info=True)
+        logger.error("[msteams_bridge] vision consult failed", exc_info=True)
         return ""
 
 
@@ -250,7 +250,7 @@ async def fetch_image_bytes(url_or_path: str) -> tuple[bytes, str] | None:
 
     ok, _why = await asyncio.to_thread(url_is_public, ref)
     if not ok:
-        logger.warning("[teams_call] image fetch refused non-public URL")
+        logger.warning("[msteams_bridge] image fetch refused non-public URL")
         return None
 
     import aiohttp
@@ -263,18 +263,18 @@ async def fetch_image_bytes(url_or_path: str) -> tuple[bytes, str] | None:
                     return None
                 mime = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
                 if mime not in _ALLOWED_IMAGE_MIME:
-                    logger.warning("[teams_call] image fetch: unexpected type %r", mime)
+                    logger.warning("[msteams_bridge] image fetch: unexpected type %r", mime)
                     return None
                 declared = resp.content_length
                 if declared is not None and declared > MAX_FETCH_BYTES:
                     return None
                 data = await resp.content.read(MAX_FETCH_BYTES + 1)
                 if len(data) > MAX_FETCH_BYTES:
-                    logger.warning("[teams_call] image fetch exceeded the size cap")
+                    logger.warning("[msteams_bridge] image fetch exceeded the size cap")
                     return None
                 return data, mime
     except Exception:  # noqa: BLE001 — display is best-effort
-        logger.warning("[teams_call] image fetch failed", exc_info=True)
+        logger.warning("[msteams_bridge] image fetch failed", exc_info=True)
         return None
 
 
@@ -322,14 +322,14 @@ async def browser_page_screenshot(url: str, task_id: str = "") -> tuple[str, str
     # in-args form was accepted, ignored, and every call fell through to the shared "default"
     # session. The isolation this comment promises did not exist; the round-8 test passed because
     # it asserted OUR call shape instead of the host's contract. Same failure mode, to the letter,
-    # as the msteams-call images param: a green test over an unverified host API.
+    # as the msteams-bridge images param: a green test over an unverified host API.
     nav = _parse_tool_json(
         await dispatch_tool_async("browser_navigate", {"url": url}, task_id=task_id)
         if task_id
         else await dispatch_tool_async("browser_navigate", {"url": url})
     )
     if nav.get("error"):
-        logger.warning("[teams_call] browser_navigate failed: %s", nav.get("error"))
+        logger.warning("[msteams_bridge] browser_navigate failed: %s", nav.get("error"))
         return None
     vargs: dict = {"question": "Has the page rendered completely?"}
     vision = _parse_tool_json(
@@ -341,7 +341,7 @@ async def browser_page_screenshot(url: str, task_id: str = "") -> tuple[str, str
     # level; the native-vision multimodal envelope carries it under meta.
     path = vision.get("screenshot_path") or (vision.get("meta") or {}).get("screenshot_path") or ""
     if not path:
-        logger.warning("[teams_call] browser_vision returned no screenshot_path")
+        logger.warning("[msteams_bridge] browser_vision returned no screenshot_path")
         return None
     note = vision.get("answer") or vision.get("text_summary") or ""
     return str(path), str(note)
@@ -479,7 +479,7 @@ async def send_teams_file(
                 payload = await resp.json()
         return {"success": True, "message_id": payload.get("id")}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("[teams_call] file card delivery failed", exc_info=True)
+        logger.warning("[msteams_bridge] file card delivery failed", exc_info=True)
         return {"error": str(exc)}
 
 
@@ -513,7 +513,7 @@ def transcribe(file_path: str) -> dict:
     try:
         from tools.transcription_tools import transcribe_audio
     except ImportError as exc:
-        logger.warning("[teams_call] STT unavailable: %s", exc)
+        logger.warning("[msteams_bridge] STT unavailable: %s", exc)
         return {"success": False, "transcript": "", "error": str(exc)}
     return transcribe_audio(file_path)
 
@@ -529,19 +529,15 @@ def load_hermes_config() -> dict:
         return {}
 
 
-#: Plugin key, newest first. `teams_call` was the name before the platform prefix; a deployed
-#: config.yaml still says it, and reading only the new key would silently drop every setting.
-PLUGIN_KEYS = ("msteams_call", "teams_call")
+#: The plugin key: the entry-point name, and what `plugins.entries.<key>` uses in config.yaml.
+PLUGIN_KEY = "msteams_bridge"
 
 
 def plugin_config_block() -> dict:
-    """The ``plugins.entries.<msteams_call|teams_call>.config`` block (``{}`` when unset)."""
+    """The ``plugins.entries.msteams_bridge.config`` block (``{}`` when unset)."""
     entries = load_hermes_config().get("plugins", {}).get("entries", {})
-    for key in PLUGIN_KEYS:
-        node = (entries.get(key) or {}).get("config", {})
-        if isinstance(node, dict) and node:
-            return node
-    return {}
+    node = (entries.get(PLUGIN_KEY) or {}).get("config", {})
+    return node if isinstance(node, dict) else {}
 
 
 def model_config_block() -> dict:
@@ -750,9 +746,9 @@ def probe_boundaries() -> list[dict]:
             except Exception:  # noqa: BLE001
                 operational = False
         if not ok:
-            logger.warning("[teams_call] boundary MISSING: %s (%s)", surface, detail or "unavailable")
+            logger.warning("[msteams_bridge] boundary MISSING: %s (%s)", surface, detail or "unavailable")
         elif operational is False:
-            logger.warning("[teams_call] boundary present but NOT READY: %s (check_fn failed)", surface)
+            logger.warning("[msteams_bridge] boundary present but NOT READY: %s (check_fn failed)", surface)
         results.append(
             {"surface": surface, "kind": kind, "ok": ok, "operational": operational, "detail": detail}
         )

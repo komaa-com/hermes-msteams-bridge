@@ -7,7 +7,7 @@ full config and wire reference, see the
 
 ## What this package does
 
-`teams_call` is a Hermes plugin that adds **Microsoft Teams voice/video** to a
+`msteams_bridge` is a Hermes plugin that adds **Microsoft Teams voice/video** to a
 Hermes agent. It hosts a local, HMAC-authenticated WebSocket server. The hosted
 **StandIn media bridge** joins the Teams call and dials into that server; this
 package runs the *brain* of the call - dialogue (realtime speech-to-speech or
@@ -16,7 +16,7 @@ driver cues (expression / visemes / show-to-caller) - and sends them back over t
 WebSocket. StandIn renders in the Teams call; this package drives.
 
 ```
-StandIn media bridge ──HMAC WebSocket──▶ teams_call (this package)
+StandIn media bridge ──HMAC WebSocket──▶ msteams_bridge (this package)
   (joins the Teams call)                   • bridge_server.py - WS server
                                            • handlers.py       - call brain
                                            • realtime/         - speech-to-speech
@@ -46,6 +46,8 @@ chat plane is the separate `plugins/platforms/teams` adapter and this package is
 | Echo guard · group gate · verbal interrupts (EN/AR) | `echo_guard.py`, `group_call_gate.py`, `verbal_interrupts.py` |
 | Vision keyframe ring + per-call spend cap | `vision_store.py`, `vision_budget.py` |
 | Realtime tool schemas + dispatch | `realtime_tools.py`, `call_tools.py` |
+| Managed chat lane (HMAC endpoint, ordered turns, reply leg, turn-query builder) | `managed_chat.py` |
+| Inbound voice messages: origin-pinned fetch + STT into the chat turn (opt-in) | `voice_messages.py` |
 | Agent bridge (consult / background task) | `agent_consult.py` |
 | Avatar emotion + viseme cues | `expression.py`, `viseme_estimate.py` |
 | Meeting transcript / minutes; delivery as a Teams **file card** (Word `.docx` via the Bot Framework attachment contract, same as the Hermes Teams adapter's `send_document`) with text fallback; local `.docx` artifact | `meeting.py`, `meeting_docx.py` |
@@ -53,7 +55,7 @@ chat plane is the separate `plugins/platforms/teams` adapter and this package is
 | ElevenLabs TTS (timestamp alignment) | `elevenlabs_tts.py` |
 | Outbound "call me back" place-call | `outbound.py` |
 | Agent-facing status tool | `tools.py` |
-| CLI (`hermes msteams-call {status,serve}`) | `cli.py` |
+| CLI (`hermes msteams-bridge {status,serve}`) | `cli.py` |
 | Plugin registration | `__init__.py` |
 
 ## Call handlers
@@ -96,7 +98,7 @@ wiki page.
 ## Configuration
 
 `TeamsVoiceConfig` (`config.py`) resolves values in priority order: the
-`plugins.entries.msteams_call.config` block in `config.yaml`, then environment
+`plugins.entries.msteams_bridge.config` block in `config.yaml`, then environment
 variables, then safe defaults. `RealtimeConfig` (`realtime/openai_client.py`)
 resolves the realtime provider (OpenAI or Azure) the same way. Secrets are never
 logged. Every key, env var, and default is documented on the
@@ -108,11 +110,11 @@ Example `config.yaml`:
 ```yaml
 plugins:
   enabled:
-    - msteams_call
+    - msteams_bridge
   entries:
-    teams_call:
+    msteams_bridge:
       config:
-        shared_secret: ${TEAMS_CALL_SHARED_SECRET}   # secret stays in .env
+        shared_secret: ${MSTEAMS_BRIDGE_SHARED_SECRET}   # secret stays in .env
         host: 127.0.0.1
         port: 8443
         realtime:
@@ -128,7 +130,7 @@ plugins:
 ```
 
 Each config.yaml key has a matching env var (e.g. `realtime.azure_endpoint` ↔
-`TEAMS_CALL_AZURE_ENDPOINT`); config.yaml wins where both are set.
+`MSTEAMS_BRIDGE_AZURE_ENDPOINT`); config.yaml wins where both are set.
 
 ## Microsoft Graph permissions (the bot app)
 
@@ -149,8 +151,8 @@ unused). Pairing your own bot with StandIn is done in the StandIn dashboard - se
 ## Run
 
 ```bash
-hermes msteams-call status      # show resolved config + readiness
-hermes msteams-call serve --handler realtime   # run the bridge server (foreground)
+hermes msteams-bridge status      # show resolved config + readiness
+hermes msteams-bridge serve --handler realtime   # run the bridge server (foreground)
 # or standalone:
 python -m hermes_msteams_bridge.bridge_server
 ```

@@ -140,7 +140,7 @@ def test_send_function_result_guarded_on_active():
 
 
 def test_allowlist_inherits_chat_allowed_users(monkeypatch):
-    monkeypatch.delenv("TEAMS_CALL_ALLOWLIST", raising=False)
+    monkeypatch.delenv("MSTEAMS_BRIDGE_ALLOWLIST", raising=False)
     monkeypatch.setenv("TEAMS_ALLOWED_USERS", "aad-shared, Other")
     cfg = resolve_config(extra={"shared_secret": "s"})
     assert cfg.allowlist == ("aad-shared", "other")  # voice inherits the chat allowlist

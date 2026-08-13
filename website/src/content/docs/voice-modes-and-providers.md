@@ -7,7 +7,7 @@ The plugin runs one **call handler** per call - the "brain" that turns caller au
 into agent responses. You pick it with `--handler` on `serve`:
 
 ```bash
-hermes teams-call serve --handler realtime    # or: streaming | echo | logging
+hermes msteams-bridge serve --handler realtime    # or: streaming | echo | logging
 ```
 
 ## The handlers at a glance

@@ -16,11 +16,11 @@ this repo; the hosted StandIn media bridge handles the Teams media so these feat
   (`show_file`, `show_web_page`, `walkthrough`, progress panel,
   `set_call_language`) are realtime-mode features; streaming mode covers
   dialogue, vision auto-attach, and minutes.
-- **Gateway-resident mode (phase 2b)** - enable the `msteams_call` platform in
+- **Gateway-resident mode (phase 2b)** - enable the `msteams_bridge` platform in
   the gateway and `hermes gateway run` hosts the voice bridge itself: one
   process, streaming utterances become real gateway agent turns (sessions,
-  authorization, approvals), and cron jobs can `deliver=msteams_call` - the bot
-  calls you and speaks the result. `hermes teams-call serve` remains the
+  authorization, approvals), and cron jobs can `deliver=msteams_bridge` - the bot
+  calls you and speaks the result. `hermes msteams-bridge serve` remains the
   standalone fallback.
 - **Barge-in** - the caller can interrupt the bot mid-reply; playback is flushed
   (`assistant.cancel`) and the model response is cancelled immediately.
@@ -114,6 +114,24 @@ The realtime model is given these function tools (dispatched by the handler):
 - **Chat/call parity** - the call answers with the SAME identity (`SOUL.md`) and
   knows the SAME installed skills as Hermes chat, delegating skill work to the
   agent.
+
+## Chat lane (StandIn Managed Bot)
+
+- **Voice messages** (`transcribe_voice_messages`, **off by default**) - a Teams
+  voice note sent to the bot is fetched, transcribed with your configured
+  `stt.provider`, and the words go into the same agent turn as the message text,
+  so "listen to this and tell me what you think" is a question the agent can
+  answer rather than a filename it can only read back. Off by default because
+  each clip is a paid STT call and a voice note can run for minutes. A clip that
+  cannot be fetched or transcribed still reaches the agent as a placeholder
+  telling it the clip could not be played, so a dropped voice note is never
+  mistaken for an empty message. Fetches are pinned to the StandIn gateway
+  origin, refuse redirects, cap at 16 MiB per clip, and stop after two clips per
+  message.
+- **Attachments** - every attachment is named in the turn (kind, filename, and
+  the signed URL), whether or not it could be relayed.
+- **Card submits** - an Action.Submit payload from a card the agent itself sent
+  is folded into the turn, so a button press is a meaningful message.
 
 ## Telephony & languages
 

@@ -42,16 +42,11 @@ numpy = ["numpy>=1.21"]
 # Office formats additionally need LibreOffice (`soffice`) on PATH.
 documents = ["pypdfium2>=4.30", "pillow>=10"]
 
-# Hermes discovers the plugin through this entry-point group. The key (msteams_call)
+# Hermes discovers the plugin through this entry-point group. The key (msteams_bridge)
 # is the plugin name shown in `hermes plugins list` / used in plugins.enabled; the
 # value is the import package whose register(ctx) Hermes calls.
 [project.entry-points."hermes_agent.plugins"]
-msteams_call = "hermes_msteams_bridge"
-# Upgrade path for configs written against the published 0.4.0, which named this plugin `teams_call`.
-# `plugins.enabled` names the ENTRY-POINT key, so without this a 0.4.0 config does not load the package
-# at all on upgrade - the platform alias cannot help, because register() never runs. Same module, so
-# enabling either name activates the same plugin; the docs and the installer write msteams_call.
-teams_call = "hermes_msteams_bridge"
+msteams_bridge = "hermes_msteams_bridge"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,7 +5,7 @@
 ``session.end`` — exactly what the StandIn media bridge sends, minus Teams.
 Two consumers:
 
-* ``hermes teams-call smoke`` — one call against an EPHEMERAL logging-handler
+* ``hermes msteams-bridge smoke`` — one call against an EPHEMERAL logging-handler
   service on a free port (no provider cost, no Teams, no funnel): proves the
   whole install end-to-end — config, HMAC, wire decode, session lifecycle.
 * the ADR-6 spike harness — N concurrent calls against an echo service while

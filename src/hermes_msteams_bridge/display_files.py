@@ -181,7 +181,7 @@ def _office_to_pdf(path: Path, workdir: Path) -> Path:
     produced = workdir / (path.stem + ".pdf")
     if result.returncode != 0 or not produced.is_file():
         logger.warning(
-            "[teams_call] soffice convert failed rc=%s: %s",
+            "[msteams_bridge] soffice convert failed rc=%s: %s",
             result.returncode, (result.stderr or b"")[:400],
         )
         raise ShowFileError("I couldn't convert that document for display.")
@@ -212,7 +212,7 @@ def render_for_display(root: Path, rel_path: str, page: int = 1) -> tuple[bytes,
         return png, "image/png", f"{path.name} (page {min(max(page, 1), total)}/{total})"
 
     # Office: convert in an ephemeral dir, then render page 1..n of the PDF.
-    with tempfile.TemporaryDirectory(prefix="teams_call_show_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="msteams_bridge_show_") as tmp:
         pdf = _office_to_pdf(path, Path(tmp))
         png, total = _render_pdf_page(pdf, page)
         return png, "image/png", f"{path.name} (page {min(max(page, 1), total)}/{total})"

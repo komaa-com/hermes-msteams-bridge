@@ -1,4 +1,4 @@
-"""``hermes teams-call`` CLI subcommands."""
+"""``hermes msteams-bridge`` CLI subcommands."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from .config import plugin_env, resolve_config
 
 
 def register_cli(subparser: argparse.ArgumentParser) -> None:
-    """Build the ``hermes teams-call`` argparse tree."""
-    subs = subparser.add_subparsers(dest="teams_call_command")
+    """Build the ``hermes msteams-bridge`` argparse tree."""
+    subs = subparser.add_subparsers(dest="msteams_bridge_command")
     subs.add_parser("status", help="Print bridge configuration and readiness")
     subs.add_parser(
         "smoke",
@@ -34,17 +34,17 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     )
 
 
-def teams_call_command(args) -> int:
-    """Dispatch ``hermes teams-call`` subcommands. Returns an exit code."""
-    command = getattr(args, "teams_call_command", None)
+def msteams_bridge_command(args) -> int:
+    """Dispatch ``hermes msteams-bridge`` subcommands. Returns an exit code."""
+    command = getattr(args, "msteams_bridge_command", None)
 
     if command == "status":
         # One status shape everywhere: the CLI prints exactly what the
-        # teams_call_status tool reports (honest ok, port ownership,
+        # msteams_bridge_status tool reports (honest ok, port ownership,
         # plugin/platform enablement — round 8).
-        from .tools import handle_teams_call_status
+        from .tools import handle_msteams_bridge_status
 
-        print(json.dumps(json.loads(handle_teams_call_status()), indent=2))
+        print(json.dumps(json.loads(handle_msteams_bridge_status()), indent=2))
         return 0
 
     if command == "smoke":
@@ -70,7 +70,7 @@ def teams_call_command(args) -> int:
 
         cfg = resolve_config()
         if not cfg.configured:
-            print("error: no shared secret (set TEAMS_CALL_SHARED_SECRET)")
+            print("error: no shared secret (set MSTEAMS_BRIDGE_SHARED_SECRET)")
             return 1
         # Fail loudly at startup, not silently at turn 40: probe every Hermes
         # surface the call brains depend on and name what's missing. Feature
@@ -105,7 +105,7 @@ def teams_call_command(args) -> int:
             if not rt_cfg.configured:
                 print(
                     "error: realtime handler needs an API key "
-                    "(OPENAI_API_KEY, or AZURE_FOUNDRY_API_KEY / TEAMS_CALL_REALTIME_API_KEY for Azure)"
+                    "(OPENAI_API_KEY, or AZURE_FOUNDRY_API_KEY / MSTEAMS_BRIDGE_REALTIME_API_KEY for Azure)"
                 )
                 return 1
             factory = lambda: RealtimeCallSessionHandler(rt_cfg, bridge_config=cfg)  # noqa: E731
@@ -126,7 +126,7 @@ def teams_call_command(args) -> int:
 
             # StandIn managed chat lane (protocol/chat-schema.yaml): started beside the voice server when
             # configured under THIS plugin's config (managed_chat.secret, or
-            # TEAMS_CALL_MANAGED_CHAT_SECRET) - same namespace as the voice lane, not a second one. One
+            # MSTEAMS_BRIDGE_MANAGED_CHAT_SECRET) - same namespace as the voice lane, not a second one. One
             # AgentConsult per Teams conversation, so a chat keeps its context across messages - the same
             # session-continuity model the voice consult uses. Voice is untouched when unset.
             managed_chat = None
@@ -135,7 +135,7 @@ def teams_call_command(args) -> int:
                 from .agent_consult import AgentConsult
                 from .managed_chat import (
                     InboundChat,
-                    attachments_note,
+                    build_turn_query,
                     start_managed_chat_if_configured,
                 )
 
@@ -152,14 +152,9 @@ def teams_call_command(args) -> int:
                     consults[key] = consult  # re-insert = most recently used (dicts keep order)
                     while len(consults) > max_consults:
                         consults.pop(next(iter(consults)))
-                    note = attachments_note(message.attachments)
-                    # Card submits arrive with EMPTY text and the payload in card_action (protocol v1
-                    # additive field): fold it in so a button press is a meaningful turn.
-                    card_note = (
-                        f"[card button pressed - submit payload: {json.dumps(message.card_action)}]"
-                        if message.card_action else ""
-                    )
-                    query = "\n".join(x for x in (message.text, card_note, note) if x)
+                    # Shared with the gateway-resident adapter (attachments, card submits,
+                    # voice-message transcription) so the two hosting paths cannot drift.
+                    query = await build_turn_query(message, cfg)
                     # ask() defaults to a 45s VOICE budget; chat turns run long. 280s stays
                     # under the server's TURN_TIMEOUT_S (300) so the consult's own timeout message
                     # reaches the user instead of the blunt turn-level one.
@@ -203,5 +198,5 @@ def teams_call_command(args) -> int:
             pass
         return 0
 
-    print("usage: hermes teams-call {status|serve|smoke}")
+    print("usage: hermes msteams-bridge {status|serve|smoke}")
     return 2

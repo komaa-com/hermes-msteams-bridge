@@ -180,9 +180,9 @@ class TestStartupIsTransactional:
 
 
 class TestManagedBotConfigResolution:
-    """The lane is configured through THIS plugin's contract (plugins.entries.teams_call.config),
+    """The lane is configured through THIS plugin's contract (plugins.entries.msteams_bridge.config),
     not a namespace of its own. Precedence must match every other setting: config block first,
-    TEAMS_CALL_* env as fallback."""
+    MSTEAMS_BRIDGE_* env as fallback."""
 
     def _resolve(self, extra=None, env=None):
         import os
@@ -202,7 +202,7 @@ class TestManagedBotConfigResolution:
                 else:
                     os.environ[k] = v
 
-    def test_nested_block_under_teams_call_config(self):
+    def test_nested_block_under_msteams_bridge_config(self):
         c = self._resolve({"shared_secret": "voice", "managed_bot": {"secret": "s", "port": 9999}})
         assert c.managed_chat_secret == "s"
         assert c.managed_chat_port == 9999
@@ -220,14 +220,14 @@ class TestManagedBotConfigResolution:
 
     def test_env_fallback_and_config_precedence(self):
         # env alone
-        c = self._resolve(env={"TEAMS_CALL_MANAGED_BOT_SECRET": "from-env"})
+        c = self._resolve(env={"MSTEAMS_BRIDGE_MANAGED_BOT_SECRET": "from-env"})
         assert c.managed_chat_secret == "from-env"
         # config block WINS over env
         c = self._resolve({"shared_secret": "v", "managed_bot": {"secret": "from-config"}},
-                          env={"TEAMS_CALL_MANAGED_BOT_SECRET": "from-env"})
+                          env={"MSTEAMS_BRIDGE_MANAGED_BOT_SECRET": "from-env"})
         assert c.managed_chat_secret == "from-config"
         # the older env spelling still resolves
-        c = self._resolve(env={"TEAMS_CALL_MANAGED_CHAT_SECRET": "legacy-env"})
+        c = self._resolve(env={"MSTEAMS_BRIDGE_MANAGED_CHAT_SECRET": "legacy-env"})
         assert c.managed_chat_secret == "legacy-env"
 
     def test_unset_means_off_with_sane_defaults(self):
