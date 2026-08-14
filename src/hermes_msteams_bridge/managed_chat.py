@@ -445,7 +445,7 @@ class ManagedChatServer:
             if text and text.strip():
                 await self._post_reply(build_reply(message, text))
             else:
-                # Parity with the OpenClaw A6 fix: after the typing indicator, silence looks exactly
+                # After the typing indicator, silence looks exactly
                 # like a hang - an empty answer is said out loud as an error-kind reply.
                 logger.warning("managed chat: agent returned an empty answer")
                 await self._post_reply(

@@ -24,8 +24,6 @@ from . import hmac_auth, protocol
 from .config import (
     HEADER_SIGNATURE,
     HEADER_TIMESTAMP,
-    LEGACY_HEADER_SIGNATURE,
-    LEGACY_HEADER_TIMESTAMP,
     TeamsVoiceConfig,
     resolve_config,
 )
@@ -229,13 +227,12 @@ class BridgeServer:
         call_id = request.match_info.get("call_id", "").strip()
         if not call_id:
             return web.Response(status=400, text="missing callId")
+        # X-StandIn-* only, same as the WS upgrade below (see the note there).
         ok, reason = hmac_auth.verify_upgrade(
             secret=self.config.shared_secret,
             call_id=call_id,
-            timestamp_header=request.headers.get(HEADER_TIMESTAMP)
-            or request.headers.get(LEGACY_HEADER_TIMESTAMP),
-            signature_header=request.headers.get(HEADER_SIGNATURE)
-            or request.headers.get(LEGACY_HEADER_SIGNATURE),
+            timestamp_header=request.headers.get(HEADER_TIMESTAMP),
+            signature_header=request.headers.get(HEADER_SIGNATURE),
             window_ms=self.config.hmac_window_ms,
             replay_guard=self._replay,
         )
@@ -252,11 +249,7 @@ class BridgeServer:
             import hashlib
             import hmac as _hmac
 
-            ts_raw = (
-                request.headers.get(HEADER_TIMESTAMP)
-                or request.headers.get(LEGACY_HEADER_TIMESTAMP)
-                or ""
-            ).strip()
+            ts_raw = (request.headers.get(HEADER_TIMESTAMP) or "").strip()
             body_hash = hashlib.sha256(raw).hexdigest()
             canonical = f"POST\n{request.path}\n{body_hash}"
             expected = _hmac.new(
@@ -302,13 +295,13 @@ class BridgeServer:
         if self._conn_by_ip.get(peer_ip, 0) >= self.config.max_connections_per_ip:
             return web.Response(status=503, text="too many connections")
 
+        # X-StandIn-Timestamp / X-StandIn-Signature are the ONLY accepted header names.
+        # Signature: HMAC-SHA256(secret, "{timestampMs}.{callId}"), lowercase hex.
         ok, reason = hmac_auth.verify_upgrade(
             secret=self.config.shared_secret,
             call_id=call_id,
-            timestamp_header=request.headers.get(HEADER_TIMESTAMP)
-            or request.headers.get(LEGACY_HEADER_TIMESTAMP),
-            signature_header=request.headers.get(HEADER_SIGNATURE)
-            or request.headers.get(LEGACY_HEADER_SIGNATURE),
+            timestamp_header=request.headers.get(HEADER_TIMESTAMP),
+            signature_header=request.headers.get(HEADER_SIGNATURE),
             window_ms=self.config.hmac_window_ms,
             replay_guard=self._replay,
         )

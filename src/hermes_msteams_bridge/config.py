@@ -39,11 +39,7 @@ DEFAULT_MESSAGES_PATH = "/msteams/messages"
 # Do not rename without a matching change in the worker, or the handshake fails.
 HEADER_TIMESTAMP = "X-StandIn-Timestamp"
 HEADER_SIGNATURE = "X-StandIn-Signature"
-# Legacy header names (pre-rename). Still accepted on receive, and still SENT on
-# outbound worker calls alongside the new pair, so either side of the wire can
-# upgrade in any order during the transition.
-LEGACY_HEADER_TIMESTAMP = "X-OpenClawTeamsBridge-Timestamp"
-LEGACY_HEADER_SIGNATURE = "X-OpenClawTeamsBridge-Signature"
+# This pair is the ONLY one accepted.
 
 
 @dataclass(frozen=True)
@@ -68,8 +64,8 @@ class TeamsVoiceConfig:
     # socket until ``max_call_duration_s`` (which defaults to 0 = unlimited).
     heartbeat_s: float = 20.0
     # Hard bound on a single call's wall-clock duration, in seconds (0 = unlimited).
-    # Mirrors OpenClaw's maxDurationMs concept: a wedged/never-ending call is torn
-    # down once it exceeds this, so it can't run forever and leak a live socket.
+    # A wedged or never-ending call is torn down once it exceeds this, so it cannot run
+    # forever and leak a live socket.
     max_call_duration_s: float = 0.0
     require_recording_status: bool = True
     # Outbound "call me back": the worker's loopback HTTP endpoint + default tenant.

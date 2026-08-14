@@ -132,7 +132,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             await rt.connect()
         except Exception:  # noqa: BLE001 — provider unreachable at connect time
             # Without a working realtime brain the caller would sit in silent dead
-            # air until they hang up. Mirror OpenClaw's closeCall(): tear the Teams
+            # air until they hang up. Tear the Teams
             # call down cleanly instead. (on_session_end then closes rt.)
             logger.error("[msteams_bridge] realtime connect failed for %s", session.call_id, exc_info=True)
             await self._close_call("realtime-connect-failed")
@@ -225,7 +225,7 @@ class RealtimeCallSessionHandler(BaseTeamsCallHandler):
             await self._rt.update_instructions(self._build_instructions())
 
     async def _close_call(self, reason: str) -> None:
-        """Tear the Teams call down (mirror OpenClaw's closeCall / closeReason).
+        """Tear the Teams call down.
 
         Closes the worker session WebSocket so the caller isn't left in dead air on
         a provider failure. The bridge read-loop then runs on_session_end teardown,

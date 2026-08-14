@@ -1,7 +1,6 @@
 """StandIn managed chat mode (protocol/chat-schema.yaml): the agent side of the
 normalized relay. The HMAC KAT is the same vector pinned in @standin/bridge-hmac
-(TS), the gateway (C#), and the OpenClaw plugin - four implementations, one set
-of bytes."""
+(TS) and the gateway (C#): one set of bytes across every implementation."""
 
 from __future__ import annotations
 
