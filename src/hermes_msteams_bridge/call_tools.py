@@ -134,7 +134,7 @@ class CallToolRunner:
             #
             # sha256, NOT hash(): Python salts hash() per process (PYTHONHASHSEED), so the same text
             # produced a different key after every restart - the one situation a retry actually spans.
-            # Matches the OpenClaw side, which has always hashed with sha256.
+            # sha256, matching the signing contract.
             idempotency_key=(
                 f"call-{h._session.call_id if h._session else 'x'}-"
                 f"{_hashlib.sha256(text.encode('utf-8')).hexdigest()[:12]}"

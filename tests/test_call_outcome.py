@@ -173,6 +173,7 @@ def test_outcome_route_rejects_bad_signature(pending, sent):
     assert sent == []
 
 
+
 def test_outcome_route_rejects_replayed_tuple(pending, sent):
     ts = int(time.time() * 1000)
     headers = _signed_headers("call-r", ts=ts)

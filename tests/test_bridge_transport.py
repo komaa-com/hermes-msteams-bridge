@@ -16,8 +16,6 @@ from hermes_msteams_bridge.bridge_server import BridgeServer, CallSessionHandler
 from hermes_msteams_bridge.config import (
     HEADER_SIGNATURE,
     HEADER_TIMESTAMP,
-    LEGACY_HEADER_SIGNATURE,
-    LEGACY_HEADER_TIMESTAMP,
     TeamsVoiceConfig,
 )
 from hermes_msteams_bridge.handlers import StreamingCallSessionHandler
@@ -78,8 +76,22 @@ async def _wait_for(predicate, timeout_s: float = 2.0) -> None:
         await asyncio.sleep(0.02)
 
 
-def test_legacy_headers_still_accepted():
-    """Pre-rename StandIn deployments send X-OpenClawTeamsBridge-*; they must keep working."""
+def test_accepted_header_names_are_the_wire_names():
+    """Pin the literal wire spelling, not just the constants.
+
+    Every other test here builds its headers from HEADER_TIMESTAMP / HEADER_SIGNATURE, so a
+    rename of the constants would carry the whole suite along and stay green while every real
+    dial 401s. These two strings are the only thing the StandIn media bridge and this server
+    agree on (HmacHeaders.cs holds the same two literals).
+    """
+    assert HEADER_TIMESTAMP == "X-StandIn-Timestamp"
+    assert HEADER_SIGNATURE == "X-StandIn-Signature"
+
+
+
+def test_current_headers_accepted_with_unknown_headers_present():
+    """The load-bearing case: a real dial carries headers this server does not read. The
+    current pair authenticates it and the unknown ones change nothing."""
 
     async def run():
         h = RecordingHandler()
@@ -87,14 +99,17 @@ def test_legacy_headers_still_accepted():
         try:
             async with aiohttp.ClientSession() as client:
                 ts = hmac_auth._now_ms()
+                sig = hmac_auth.sign(SECRET, ts, "c-both")
                 headers = {
-                    LEGACY_HEADER_TIMESTAMP: str(ts),
-                    LEGACY_HEADER_SIGNATURE: hmac_auth.sign(SECRET, ts, "c-legacy"),
+                    HEADER_TIMESTAMP: str(ts),
+                    HEADER_SIGNATURE: sig,
+                    "X-Unread-Timestamp": str(ts),
+                    "X-Unread-Signature": sig,
                 }
-                ws = await client.ws_connect(f"{url}/c-legacy", headers=headers)
-                await ws.send_str(_start_frame("c-legacy"))
+                ws = await client.ws_connect(f"{url}/c-both", headers=headers)
+                await ws.send_str(_start_frame("c-both"))
                 await _wait_for(lambda: h.started)
-                assert h.started
+                assert h.started == ["c-both"]
                 await ws.close()
         finally:
             await server.stop()
