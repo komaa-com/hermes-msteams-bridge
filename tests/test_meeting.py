@@ -41,10 +41,18 @@ def test_post_minutes_empty_is_noop():
 
 
 def test_post_minutes_requires_conversation():
+    """No delivery target must not be reported as no conversation.
+
+    The transcript EXISTS here; only the target is missing. A 1:1 call has no meeting thread,
+    so the bridge sends an empty threadId, and this branch is what a caller hits. Reporting
+    "wasn't enough of a conversation" told them their call was too short when it was not, and
+    hid a real delivery failure behind a content excuse.
+    """
     t = MeetingTranscript()
     t.add("A", "hi")
     out = asyncio.run(post_minutes(consult=None, transcript=t, conversation_id=""))
-    assert "wasn't enough" in out.lower()
+    assert "wasn't enough" not in out.lower()  # that is the empty-TRANSCRIPT message
+    assert "no teams chat" in out.lower()
 
 
 def test_post_meeting_minutes_tool_registered():

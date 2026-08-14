@@ -135,8 +135,16 @@ async def post_minutes(
     to the ``send_message``-tool sender) — decouples voice from the host delivery
     path and keeps this unit-testable. Returns a short spoken-result string.
     """
-    if transcript.is_empty() or not conversation_id:
+    if transcript.is_empty():
         return "There wasn't enough of a conversation to summarize."
+    if not conversation_id:
+        # Distinct from "nothing to summarize": the transcript EXISTS, there is just no chat to
+        # post it into. A 1:1 call has no meeting thread, so the bridge sends an empty threadId.
+        # Conflating the two cases told callers their conversation was too short when it was not.
+        logger.info(
+            "[msteams_bridge] minutes not delivered: this call carries no Teams thread to post to"
+        )
+        return "I can summarize this call, but it has no Teams chat for me to post the minutes to."
     try:
         minutes = await consult.ask(summarize_prompt(transcript.render()), timeout_s=120.0)
     except Exception:  # noqa: BLE001 — recap must never crash teardown
