@@ -175,7 +175,7 @@ def decode(raw: str | bytes) -> InboundMessage:
             return SessionStart(
                 type=mtype,
                 call_id=_require_str(obj, "callId"),
-                thread_id=_require_str(obj, "threadId"),
+                thread_id=str(obj.get("threadId") or ""),
                 caller=CallerInfo.from_dict(obj.get("caller")),
                 recording_status=_clean(obj.get("recordingStatus")),
                 direction=_clean(obj.get("direction")),

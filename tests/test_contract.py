@@ -12,6 +12,24 @@ from hermes_msteams_bridge import protocol as p
 from hermes_msteams_bridge import viseme_estimate as viz
 
 
+def test_decode_session_start_accepts_empty_thread_id():
+    """A 1:1 call has no meeting thread, so the worker sends threadId="".
+
+    Regression: threadId was decoded with _require_str, which treats "" as
+    missing. The moment the worker stopped smuggling the call id into that field
+    (standin-media-bridge #147), every 1:1 session.start raised ProtocolError,
+    no session started, and the caller heard the worker's local echo.
+    """
+    import json as _json
+
+    base = {"type": "session.start", "callId": "c", "caller": {"aadId": "a"}}
+    assert p.decode(_json.dumps({**base, "threadId": ""})).thread_id == ""
+    # Absent entirely is the same case: no thread to name.
+    assert p.decode(_json.dumps(base)).thread_id == ""
+    # A real meeting thread still round-trips.
+    assert p.decode(_json.dumps({**base, "threadId": "19:meet"})).thread_id == "19:meet"
+
+
 def test_decode_inbound_session_start():
     m = p.decode(json.dumps({
         "type": "session.start", "callId": "c1", "threadId": "t1",
