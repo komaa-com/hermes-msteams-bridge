@@ -35,7 +35,7 @@ protocol** StandIn speaks with us, never its internals.
 Unlike a typical client/gateway split, here **the plugin binds and waits** and the
 StandIn media bridge is the WebSocket client:
 
-- The plugin binds `127.0.0.1:8443` by default (loopback - the shared secret must
+- The plugin binds `127.0.0.1:9442` by default (loopback - the shared secret must
   never be exposed on a public interface).
 - One Teams call opens **one WebSocket connection** to
   `/voice/msteams/stream/{callId}`.

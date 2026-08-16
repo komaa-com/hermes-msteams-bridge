@@ -48,7 +48,7 @@ class TeamsVoiceConfig:
 
     shared_secret: str
     host: str = "127.0.0.1"
-    port: int = 8443
+    port: int = 9442
     path: str = DEFAULT_PATH
     # Replay/clock-skew window for the HMAC handshake, in milliseconds.
     hmac_window_ms: int = 60_000
@@ -94,7 +94,7 @@ class TeamsVoiceConfig:
     # to learn a second namespace to turn it on. Empty secret = lane off, fail closed.
     managed_chat_secret: str = ""
     managed_chat_host: str = "0.0.0.0"
-    managed_chat_port: int = 8444
+    managed_chat_port: int = 9444
     managed_chat_path: str = "/managed/chat"
     managed_chat_gateway_reply_url: str = "https://teams.standin.komaa.com/api/chat/reply"
     # Transcribe inbound Teams VOICE MESSAGES on the chat lane and fold the words into the turn.
@@ -184,7 +184,7 @@ def resolve_config(extra: Mapping[str, Any] | None = None) -> TeamsVoiceConfig:
     )
     # `calling_port` is the name (paired with `messages_port`); `port` stays accepted.
     port = _coerce_int(
-        extra.get("calling_port") or extra.get("port") or plugin_env("MSTEAMS_BRIDGE_PORT", ""), 8443
+        extra.get("calling_port") or extra.get("port") or plugin_env("MSTEAMS_BRIDGE_PORT", ""), 9442
     )
     path = str(extra.get("path") or "").strip() or DEFAULT_PATH
     window = _coerce_int(
@@ -273,8 +273,8 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
             shared_secret: ${MSTEAMS_BRIDGE_SHARED_SECRET}     # voice lane
             chat_secret:   ${MSTEAMS_BRIDGE_CHAT_SECRET}       # managed chat lane
             host: 127.0.0.1                                # shared by both lanes
-            calling_port: 8443
-            messages_port: 8444
+            calling_port: 9442
+            messages_port: 9444
             gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
 
     The secret resolves per lane, but ONE value is enough. A StandIn connection can issue a distinct
@@ -294,7 +294,7 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
                 secret: ${MSTEAMS_BRIDGE_SECRET}
                 managed_chat:
                   secret: ${MSTEAMS_BRIDGE_MANAGED_CHAT_SECRET}
-                  port: 8444
+                  port: 9444
     """
     # `managed_bot` is the name - the StandIn Managed Bot connection, of which chat is one lane.
     # `managed_chat` stays accepted as an alias so an early adopter's config keeps working.
@@ -338,7 +338,7 @@ def _resolve_managed_chat(extra: Mapping[str, Any]) -> dict[str, Any]:
             or "127.0.0.1"
         ),
         "managed_chat_port": _coerce_int(
-            extra.get("messages_port") or block.get("port") or _env("PORT"), 8444
+            extra.get("messages_port") or block.get("port") or _env("PORT"), 9444
         ),
         "managed_chat_path": (
             _flat("messages_path", "path")

@@ -11,7 +11,7 @@ model, the three tiers, and how the shared secret works.
 ## The connection model
 
 - **The plugin is a local WebSocket server.** When you run
-  `hermes msteams-bridge serve`, it binds `127.0.0.1:8443` by default and waits.
+  `hermes msteams-bridge serve`, it binds `127.0.0.1:9442` by default and waits.
 - **The StandIn media bridge is the client.** For each Teams call it opens **one
   WebSocket** to `/msteams/calling/{callId}` on your server.
 - **Authentication is HMAC over a shared secret.** Both sides hold the same secret.
@@ -28,7 +28,7 @@ StandIn identity and which limits apply.
 flowchart LR
     Teams["Teams call"]
     Bridge["StandIn media bridge<br/>(hosted)"]
-    Plugin["127.0.0.1:8443<br/>(this plugin)"]
+    Plugin["127.0.0.1:9442<br/>(this plugin)"]
     Teams <--> Bridge
     Bridge -->|"HMAC WS: dials in with<br/>X-StandIn-Timestamp / -Signature headers"| Plugin
 ```

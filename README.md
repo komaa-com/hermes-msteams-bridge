@@ -37,10 +37,10 @@ plugins:
         secret: ${MSTEAMS_BRIDGE_SECRET}
 ```
 
-The chat listener defaults to `0.0.0.0:8444` because the StandIn gateway must reach it. If you reach
-your agent over a private network (Tailscale, VPN, a reverse proxy), set `host` to that
-interface, or firewall the port - the HMAC keeps unauthenticated callers out, but an open port is
-still an open port.
+The chat listener defaults to `127.0.0.1:9444` (the same host as the voice lane) and the StandIn
+gateway must reach it through the same tunnel or reverse proxy. If you instead bind it to a
+private-network interface (Tailscale, VPN), firewall the port - the HMAC keeps unauthenticated
+callers out, but an open port is still an open port.
 
 One agent instance serves **one** StandIn connection: the secret is a single value scoped to one
 tenant binding. Serving several tenants means several instances, each with its own secret. Never
@@ -186,15 +186,15 @@ plugins:
     msteams_bridge:
       config:
         # The connection secret from the StandIn portal. ONE value, BOTH lanes: calling
-        # (ws://host:8443/msteams/calling) and messages (http://host:8444/msteams/messages).
+        # (ws://host:9442/msteams/calling) and messages (http://host:9444/msteams/messages).
         # A per-lane `chat_secret` is accepted as an override; you do not need one.
         secret: ${MSTEAMS_BRIDGE_SECRET}
 
         # 127.0.0.1 on purpose: your tunnel (Tailscale Funnel, ngrok, a reverse proxy) terminates
         # TLS publicly and forwards to loopback, so no port is exposed on the LAN.
         host: 127.0.0.1
-        calling_port: 8443
-        messages_port: 8444
+        calling_port: 9442
+        messages_port: 9444
         gateway_reply_endpoint: https://teams.standin.komaa.com/api/chat/reply
 
         # Accept inbound callers. With this false and an empty allowlist, every caller is denied
@@ -234,8 +234,8 @@ hermes msteams-bridge status
 The startup log should show both lanes listening:
 
 ```
-[msteams_bridge] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling
-managed chat: listening on 127.0.0.1:8444/msteams/messages
+[msteams_bridge] bridge listening host=127.0.0.1 port=9442 path=/msteams/calling/{call_id}
+managed chat: listening on 127.0.0.1:9444/msteams/messages
 ```
 
 Run one mode or the other, never both: `hermes msteams-bridge serve` (standalone) **or**
@@ -254,8 +254,8 @@ plugins:
       config:
         secret: ${MSTEAMS_BRIDGE_SECRET}   # MUST match the secret StandIn gave you
         host: 127.0.0.1                    # shared by both lanes
-        calling_port: 8443                 # voice WS StandIn dials: ws://host:port/msteams/calling
-        messages_port: 8444                # managed chat lane: http://host:port/msteams/messages
+        calling_port: 9442                 # voice WS StandIn dials: ws://host:port/msteams/calling/{callId}
+        messages_port: 9444                # managed chat lane: http://host:port/msteams/messages
         # chat_secret: ${MSTEAMS_BRIDGE_CHAT_SECRET}  # optional: a distinct key per lane; defaults to `secret`
         max_call_duration_s: 0             # hard wall-clock cap per call in seconds (0 = unlimited)
         meeting_recap: true                # optional: post minutes at call end

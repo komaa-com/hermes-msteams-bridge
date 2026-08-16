@@ -109,8 +109,8 @@ plugins:
         # (Bring-your-own-bot deployments set `calling_secret` instead.)
         secret: ${MSTEAMS_BRIDGE_SECRET}
         host: 127.0.0.1                 # both lanes; the tunnel terminates TLS and proxies here
-        calling_port: 8443
-        messages_port: 8444
+        calling_port: 9442
+        messages_port: 9444
         # WITHOUT a caller policy the bridge accepts NOTHING: the allowlist IS the policy and an
         # empty one denies every inbound call, so a setup that looks finished answers nothing.
         allow_all: true                 # or list trusted callers under `allowlist`
@@ -161,7 +161,7 @@ hermes msteams-bridge serve --handler realtime
 You should see it bind:
 
 ```text
-[msteams_bridge] bridge listening host=127.0.0.1 port=8443 path=/msteams/calling/{call_id}
+[msteams_bridge] bridge listening host=127.0.0.1 port=9442 path=/msteams/calling/{call_id}
 ```
 
 Other handlers: `--handler streaming` (STT→agent→TTS, needs `ffmpeg`),
