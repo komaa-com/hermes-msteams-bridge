@@ -30,8 +30,8 @@ plugins:
         # per-lane CALLING override, for BYO deployments and split-key setups - not the starting point.
         secret: ${MSTEAMS_BRIDGE_SECRET}
         host: 127.0.0.1
-        calling_port: 8443
-        messages_port: 8444
+        calling_port: 9442
+        messages_port: 9444
         # ...bridge keys below...
         realtime:
           # ...realtime keys below...
@@ -48,7 +48,7 @@ There is no separate enable flag.
 | `secret` | `MSTEAMS_BRIDGE_SECRET` | - | **The connection secret**, covering BOTH lanes. This is the one value the StandIn portal gives you. |
 | `calling_secret` | `MSTEAMS_BRIDGE_CALLING_SECRET` | falls back to `secret` | Per-lane override for CALLING only. `shared_secret` is the older name for it. |
 | `messages_secret` | `MSTEAMS_BRIDGE_MESSAGES_SECRET` | falls back to `secret` | Per-lane override for MESSAGES only. Set both per-lane keys for a split-key deployment, where neither key can sign for the other and they rotate independently. |
-| `messages_port` | `MSTEAMS_BRIDGE_MANAGED_BOT_PORT` | `8444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (8443). |
+| `messages_port` | `MSTEAMS_BRIDGE_MANAGED_BOT_PORT` | `9444` | HTTP port the StandIn gateway POSTs inbound messages to. Voice uses `calling_port` (9442). |
 | `messages_path` | `MSTEAMS_BRIDGE_MANAGED_BOT_PATH` | `/msteams/messages` | Path the gateway posts to. |
 | `gateway_reply_endpoint` | `MSTEAMS_BRIDGE_MANAGED_BOT_GATEWAY_REPLY_URL` | StandIn's `/api/chat/reply` | Where replies are posted back. |
 | `host` | `MSTEAMS_BRIDGE_HOST` | `127.0.0.1` | Shared with the voice lane - one machine, one interface. Loopback by default: the documented posture is a tunnel that terminates TLS publicly and proxies to loopback, so no port is exposed on your LAN. Set it to your tailnet/VPN address if the gateway reaches the agent directly. |
@@ -63,7 +63,7 @@ binding. Run a second instance for a second organization; never share a secret a
 |---|---|---|---|
 | `shared_secret` | `MSTEAMS_BRIDGE_SHARED_SECRET` | `""` (unset) | HMAC secret shared with StandIn. **Required** - with no secret the bridge won't start. Must equal the value paired in StandIn. |
 | `host` | `MSTEAMS_BRIDGE_HOST` | `127.0.0.1` | Bind address for the local WebSocket server. Non-loopback binds are warned about (they expose the secret). |
-| `port` | `MSTEAMS_BRIDGE_PORT` | `8443` | Bind port. StandIn dials `ws://host:port/msteams/calling/{callId}`. |
+| `calling_port` (`port` still accepted) | `MSTEAMS_BRIDGE_PORT` | `9442` | Bind port. StandIn dials `ws://host:port/msteams/calling/{callId}`. |
 | `path` | *(config only)* | `/msteams/calling` | URL path prefix StandIn connects to. Rarely changed. |
 | `hmac_window_ms` | `MSTEAMS_BRIDGE_HMAC_WINDOW_MS` | `60000` | Clock-skew / replay window for the HMAC handshake, in milliseconds (±60 s). |
 | `max_call_duration_s` | `MSTEAMS_BRIDGE_MAX_CALL_DURATION_S` | `0.0` | Hard wall-clock cap on a single call, in seconds. `0` = unlimited. A wedged/never-ending call is torn down once exceeded. |
@@ -172,7 +172,7 @@ You can run entirely from environment variables (no `config.yaml` block):
 ```bash
 MSTEAMS_BRIDGE_SHARED_SECRET=...            # must equal the value paired in StandIn
 MSTEAMS_BRIDGE_HOST=127.0.0.1
-MSTEAMS_BRIDGE_PORT=8443
+MSTEAMS_BRIDGE_PORT=9442
 MSTEAMS_BRIDGE_SESSION_SCOPE=per-thread
 MSTEAMS_BRIDGE_WAKE_PHRASES=assistant,hermes
 # Realtime (Azure):

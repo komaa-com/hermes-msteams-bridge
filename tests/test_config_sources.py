@@ -25,6 +25,16 @@ def test_resolve_config_env_only_when_block_empty(monkeypatch):
     assert cfg.shared_secret == "env-secret"
 
 
+def test_default_ports_are_the_standin_lane_ports(monkeypatch):
+    """Calling lane 9442, managed-chat lane 9444: the same numbers every StandIn plugin uses."""
+    for var in ("MSTEAMS_BRIDGE_PORT", "MSTEAMS_BRIDGE_MANAGED_BOT_PORT", "MSTEAMS_BRIDGE_MANAGED_CHAT_PORT"):
+        monkeypatch.delenv(var, raising=False)
+    cfg = cfgmod.resolve_config(extra={"shared_secret": "s"})
+    assert cfg.port == 9442
+    assert cfg.managed_chat_port == 9444
+    assert cfgmod.TeamsVoiceConfig(shared_secret="s").port == 9442
+
+
 def test_realtime_block_overrides_env(monkeypatch):
     monkeypatch.setenv("MSTEAMS_BRIDGE_REALTIME_VOICE", "cedar")  # env
     monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "envkey")

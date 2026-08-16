@@ -225,7 +225,7 @@ class ManagedChatConfig:
     chat_secret: str
     gateway_reply_url: str = "https://teams.standin.komaa.com/api/chat/reply"
     host: str = "0.0.0.0"
-    port: int = 8444
+    port: int = 9444
     path: str = "/managed/chat"
 
     @property

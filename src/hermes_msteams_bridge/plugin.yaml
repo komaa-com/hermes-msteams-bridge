@@ -26,7 +26,7 @@ optional_env:
   - name: MSTEAMS_BRIDGE_HOST
     description: "Bind address for the bridge WebSocket server (default 127.0.0.1)."
   - name: MSTEAMS_BRIDGE_PORT
-    description: "Port for the bridge WebSocket server (default 8443)."
+    description: "Port for the bridge WebSocket server (default 9442)."
   - name: MSTEAMS_BRIDGE_ALLOWLIST
     description: "Comma-separated caller AAD object ids allowed to call (empty = deny all inbound callers unless MSTEAMS_BRIDGE_ALLOW_ALL is set)."
   - name: MSTEAMS_BRIDGE_ALLOW_ALL
@@ -48,7 +48,7 @@ optional_env:
   - name: MSTEAMS_BRIDGE_MANAGED_BOT_HOST
     description: "Bind address for the managed chat endpoint (default 0.0.0.0)."
   - name: MSTEAMS_BRIDGE_MANAGED_BOT_PORT
-    description: "Port for the managed chat endpoint (default 8444)."
+    description: "Port for the managed chat endpoint (default 9444)."
   - name: MSTEAMS_BRIDGE_MANAGED_BOT_PATH
     description: "Path the StandIn gateway POSTs inbound messages to (default /managed/chat)."
   - name: MSTEAMS_BRIDGE_MANAGED_BOT_GATEWAY_REPLY_URL

@@ -23,7 +23,7 @@ StandIn media bridge ──HMAC WebSocket──▶ msteams_bridge (this package)
                                            • protocol.py       - the wire contract
 ```
 
-The plugin is the **WebSocket server** (binds `127.0.0.1:8443` by default); StandIn
+The plugin is the **WebSocket server** (binds `127.0.0.1:9442` by default); StandIn
 is the **client** that dials in.
 
 Chat depends on the connection mode. In **StandIn Managed Bot** mode this package
@@ -116,7 +116,7 @@ plugins:
       config:
         shared_secret: ${MSTEAMS_BRIDGE_SHARED_SECRET}   # secret stays in .env
         host: 127.0.0.1
-        port: 8443
+        calling_port: 9442
         realtime:
           backend: azure                # azure | openai
           azure_endpoint: https://<your-azure-resource>.cognitiveservices.azure.com

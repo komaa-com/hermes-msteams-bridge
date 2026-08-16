@@ -137,7 +137,7 @@ class TestConfig:
 
     def test_defaults(self):
         cfg = ManagedChatConfig(chat_secret="k")
-        assert cfg.port == 8444
+        assert cfg.port == 9444
         assert cfg.path == "/managed/chat"
         assert "/api/chat/reply" in cfg.gateway_reply_url
 
@@ -232,7 +232,7 @@ class TestManagedBotConfigResolution:
     def test_unset_means_off_with_sane_defaults(self):
         c = self._resolve({"shared_secret": "voice"})
         assert c.managed_chat_secret == ""          # secret is the switch: empty = lane off
-        assert c.managed_chat_port == 8444
+        assert c.managed_chat_port == 9444
         assert c.managed_chat_path == "/msteams/messages"
 
 

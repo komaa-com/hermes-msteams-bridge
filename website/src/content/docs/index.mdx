@@ -46,7 +46,7 @@ flowchart LR
     Plugin --> Agent
 ```
 
-The plugin is the **local WebSocket server** (binds `127.0.0.1:8443`). StandIn is
+The plugin is the **local WebSocket server** (binds `127.0.0.1:9442`). StandIn is
 the **client** that dials in over an HMAC-authenticated WebSocket using a shared
 secret both sides hold. You never operate any Teams media yourself - that is
 StandIn's job.

@@ -105,7 +105,7 @@ calls, use a subscription tier - see [Connecting to StandIn](/hermes-msteams-bri
 The server answers `GET /health` with `ok` on the same host/port:
 
 ```bash
-curl http://127.0.0.1:8443/health   # -> ok
+curl http://127.0.0.1:9442/health   # -> ok
 ```
 
 If that fails, the plugin's server isn't running (or is bound to a different host/port) -
