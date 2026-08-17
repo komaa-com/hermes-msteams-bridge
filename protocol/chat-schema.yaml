@@ -1,34 +1,44 @@
 # =============================================================================
-# StandIn managed chat relay protocol
+# StandIn managed chat relay protocol - SINGLE SOURCE OF TRUTH
 # =============================================================================
-# The wire contract for managed connection mode: StandIn provides the Teams bot
-# and your agent never holds a Bot Framework credential.
+# The wire contract between the StandIn Teams gateway and a customer's agent
+# (OpenClaw / Hermes bridge) for the managed connection mode, where StandIn
+# provides the Teams bot and the agent never holds a Bot Framework credential.
 #
-# This is NOT the voice protocol. Voice is one WebSocket per live call; chat is
-# request/response HTTP.
+# WHY THIS IS NOT THE VOICE PROTOCOL:
+#   Voice is one WebSocket per live call between the media worker and the agent.
+#   Chat is request/response HTTP between the StandIn gateway and the agent.
+#   The gateway terminates Bot Framework (its credential never leaves StandIn)
+#   and speaks THIS normalized protocol to the agent instead.
 #
 # TRANSPORT
-#   in    POST {your managed chat URL}      body: InboundMessage
-#   out   POST {reply URL StandIn gives you}  body: OutboundMessage
-#   Both directions carry Content-Type: application/json; charset=utf-8.
+#   gateway -> agent   POST {your managed chat URL}           body: InboundMessage
+#   agent  -> gateway  POST {gateway}/api/chat/reply          body: OutboundMessage
+#   Both directions are authenticated with the bridge HMAC (see AUTH below) and
+#   carry Content-Type: application/json; charset=utf-8.
 #
-# AUTH
+# AUTH (identical construction to the StandIn voice HMAC contract)
 #   X-StandIn-Timestamp   unix epoch MILLISECONDS
 #   X-StandIn-Signature   lowercase hex HMAC-SHA256(secret, "{timestampMs}.{rawBody}")
-#   The secret is your connection's key, issued by StandIn. Receivers MUST enforce
-#   a +/- 5 minute replay window and MUST compare in constant time.
+#   The secret is the connection's key. Since the one-secret decision (2026-08-09) StandIn issues ONE
+#   value covering both the calling and messages lanes; deployments may still configure per-lane keys,
+#   but independent rotation is a deployment choice, not a guarantee of this protocol.
+#   Receivers enforce a +/- 5 minute replay window and compare in constant time.
 #
 # EVOLUTION
 #   Additive only. Unknown fields MUST be ignored; unknown enum values MUST NOT
-#   be rejected (openEnum). schemaVersion is bumped only for a breaking change.
+#   be rejected (openEnum). schemaVersion is bumped only for a breaking change,
+#   which requires both sides to ship before it is emitted.
 #
-# Each implementation carries a drift-checked copy of this file, so the copies
-# are byte-identical by design - edit them together.
+# CONSUMERS (each repo carries a drift-checked copy of this file)
+#   - C#     the StandIn Teams gateway
+#   - TS     openclaw-msteams-bridge (managed chat mode)
+#   - Python hermes-msteams-bridge   (managed chat mode)
 
 protocol:
   name: standin-managed-chat
   version: 1
-  doc: "Normalized chat relay between StandIn and your agent for managed connection mode. Your agent never sees a Bot Framework credential."
+  doc: "Normalized chat relay between the StandIn managed gateway and a customer's OpenClaw/Hermes agent. The gateway owns Bot Framework auth and all outbound Teams sends; the agent never sees a bot credential."
 
 constants:
   - name: SCHEMA_VERSION
@@ -46,15 +56,19 @@ enums:
   AttachmentKind:
     open: true
     values: [image, file, audio]
-    doc: "'image' is an inline image (v1 supported). 'file' is a real file attachment: personal-chat files are v1, channel/group files are NOT relayed and arrive with relayable=false. 'audio' is a Teams voice message; the agent transcribes it when transcribeVoiceMessages is on, and otherwise treats it as any other attachment. Additive on an OPEN enum, so a peer that predates it relays the clip as an unknown kind rather than failing."
+    doc: "'image' is an inline image (v1 supported). 'file' is a real file attachment: personal-chat files are v1, channel/group files are NOT relayed and arrive with relayable=false. 'audio' is a Teams voice message; the agent transcribes it when transcribeVoiceMessages is on, and otherwise treats it as any other attachment. NOTE (2026-08-17): the StandIn gateway does not emit 'audio' yet - Attachments.cs classifies a voice clip as 'file' with an audio content type - so this value is currently documented ahead of the sender. It is on an OPEN enum precisely so that is safe in both directions."
   ReplyKind:
     open: true
-    values: [message, typing, error]
-    doc: "'message' is normal content; 'typing' shows the Teams typing indicator and carries no text; 'error' renders the agent-unreachable/agent-error styling. Unknown kinds are treated as 'message'."
+    values: [message, typing, progress, chunk, error]
+    doc: "'message' is normal content; 'typing' shows the Teams typing indicator and carries no text; 'progress' is a live status line ('checking the Q3 pipeline') that renders as ONE affordance updating in place; 'chunk' is the ANSWER SO FAR, rendered into that same affordance as the reply growing; 'error' renders the agent-unreachable/agent-error styling. Unknown kinds are treated as 'message'. progress and chunk are both PARTIAL: cumulative (a chunk is the whole answer so far, NEVER a delta), ephemeral, never queued, coalesced to about one update per second, and never the last word - the turn still ends with a kind=message carrying the complete answer, and only that message gets the AI label, the feedback loop and a durable outbox row. Cumulative is what makes them safe across two replicas: a partial that arrives out of order is resolved by sequence, and one dropped by the coalescer is superseded by the next, so no partial can truncate the answer. 'progress' is deliberately its own kind rather than 'typing with text': an agent that already sends typing has never had its text read, and publishing that field retroactively would put strings nobody wrote for a user in front of one."
+  InboundKind:
+    open: true
+    values: [message, meetingStart, meetingEnd]
+    doc: "What an inbound IS: a person speaking, or something that happened. 'message' is a human's words (chat, message action, or a card's Action.Submit) and is the default. 'meetingStart'/'meetingEnd' are Teams meeting lifecycle events for a meeting StandIn is installed in - there is no sender and no text; the facts are in `meeting`. Open set, and the open rule is load-bearing here: an agent that does not know a kind MUST treat it as 'message' (i.e. an empty-text message it may ignore) and MUST NOT reject it, so a gateway that learns to relay a new event does not start failing against agents that shipped earlier. Kept separate from ReplyKind on purpose - the two directions have different vocabularies."
 
 types:
   Sender:
-    doc: "Who sent the inbound message. Resolved from the authenticated Teams activity, so it may be trusted without further checks."
+    doc: "Who sent the inbound message. The gateway resolves this from the authenticated Bot Framework activity, so the agent may trust it without further checks."
     fields:
       - name: aadObjectId
         type: string
@@ -69,14 +83,23 @@ types:
       - name: isGuest
         type: bool
         default: false
-        doc: "True when the sender is a B2B guest in the bound tenant. Guests relay like members; the AGENT decides its own policy. FAIL-OPEN: false also means guest status could not be determined, so read it as 'not known to be a guest' rather than 'known to be a member'."
+        doc: "True when the sender is a B2B guest in the bound tenant. Guests relay like members - the AGENT decides its own policy; they live in the bound tenant's directory. Read from the conversation roster and FAIL-OPEN: false also means the gateway could not read the roster, so treat it as 'not known to be a guest' rather than 'known to be a member'. NOT the same as isAnonymous: a guest has a real directory identity somewhere, and a roster userRole of 'anonymous' answers isGuest false."
+      - name: isAnonymous
+        type: bool
+        default: false
+        doc: "True when the sender joined a meeting by link and was never authenticated (roster userRole 'anonymous'). There is no directory identity behind them: displayName is whatever they typed, aadObjectId is absent, and homeTenantId is unknown - so nothing about this sender should be trusted as identity. Kept SEPARATE from isGuest deliberately; folding the two into one 'outsider' flag would lose the distinction between someone your directory knows and someone nobody does. Read from the conversation roster and FAIL-OPEN in the same way: false also means the gateway could not read the roster."
+      - name: homeTenantId
+        type: string
+        optional: true
+        nullable: true
+        doc: "Microsoft tenant the sender is HOMED in, canonical lowercase-hyphenated GUID, read from the conversation roster. Equal to the message's tenantId for the customer's own staff and DIFFERENT in a federated chat (the customer plus their own client in one chat), which is the outsider signal isGuest alone cannot give. Absent or null means unknown - an unreadable roster, or an anonymous joiner who has no tenant - and MUST NOT be read as 'same tenant as the message'."
       - name: isLinkedOwner
         type: bool
         default: false
-        doc: "True when this sender's Teams principal is linked to the StandIn account that owns the connection. Useful for the agent's own permissioning."
+        doc: "True when this sender's Teams principal is linked to the StandIn account that owns the connection. The gateway uses this for expensive-action authorization; agents may use it for their own permissioning."
 
   Attachment:
-    doc: "An inbound attachment, relayed BY REFERENCE on a short-lived signed URL, so the agent never needs a Teams token."
+    doc: "An inbound attachment, relayed BY REFERENCE - the gateway downloads the Teams content with its bot credential and re-exposes it on a short-lived signed URL, so the agent never needs a Teams token."
     fields:
       - name: kind
         type: string
@@ -95,12 +118,12 @@ types:
       - name: sizeBytes
         type: long
         optional: true
-        doc: "Size in bytes when known. A size cap applies before relaying; an oversize attachment arrives with relayable=false instead of a url."
+        doc: "Size in bytes when known. The gateway enforces its own cap BEFORE relaying; an oversize attachment arrives with relayable=false instead of a url."
       - name: url
         type: string
         optional: true
         nullable: true
-        doc: "Signed, short-lived fetch URL. Absent when relayable is false. Agents must fetch within expiresAt and must not persist the URL itself."
+        doc: "Gateway-signed, short-lived fetch URL. Absent when relayable is false. Agents must fetch within expiresAt and must not persist the URL itself."
       - name: expiresAt
         type: string
         optional: true
@@ -109,20 +132,52 @@ types:
       - name: relayable
         type: bool
         default: true
-        doc: "False when the content was deliberately not relayed (too large, unsupported kind, or a channel/group file). The agent should tell the user rather than silently ignoring the attachment."
+        doc: "False when the gateway deliberately did not relay the content (too large, unsupported kind, or a channel/group file). The agent should tell the user rather than silently ignoring the attachment."
+
+  MeetingEvent:
+    doc: "A Teams meeting StandIn is installed in, at the moment it started or ended. Present only on the meeting kinds of InboundKind. Deliberately small: everything here rides the event activity Teams already pushes to a bot installed in the meeting. Attendance, participant lists and transcripts are absent because they need Graph application permissions plus a tenant application access policy that StandIn does not request - so the agent learns THAT a meeting started, never who was in it."
+    fields:
+      - name: id
+        type: string
+        doc: "Teams meeting id. The SAME value on the start and the end of one meeting, so an agent can pair them. Not a Microsoft Graph onlineMeeting id and not usable as one."
+      - name: meetingType
+        type: string
+        optional: true
+        nullable: true
+        doc: "Teams' own classification of the meeting (e.g. 'Scheduled'), relayed verbatim. Open set - do not switch exhaustively on it."
+      - name: title
+        type: string
+        optional: true
+        nullable: true
+        doc: "Meeting subject as the organizer typed it. Third-party free text: bounded and flattened by the gateway like every other forwarded string, and absent when the meeting has no subject."
+      - name: joinUrl
+        type: string
+        optional: true
+        nullable: true
+        doc: "The meeting's join link. A CAPABILITY, not an identifier - whoever holds it can join - so treat it as a secret: it is relayed because joining is the point (StandIn's own `join` command takes exactly this link), it reaches only the tenant's own agent over the authenticated hop, and the gateway never logs it."
+      - name: startTime
+        type: string
+        optional: true
+        nullable: true
+        doc: "RFC3339 UTC instant the meeting started. Present on kind=meetingStart only; the end event does not carry one and the gateway does not invent it from its own clock."
+      - name: endTime
+        type: string
+        optional: true
+        nullable: true
+        doc: "RFC3339 UTC instant the meeting ended. Present on kind=meetingEnd only."
 
   InboundMessage:
-    doc: "Inbound: one user message in a bound tenant's conversation. Already authenticated and resolved to your connection. Reserved bot commands are handled by StandIn and never arrive here."
+    doc: "gateway -> agent. One thing that happened in a bound tenant's conversation - usually a user message, otherwise a meeting lifecycle event (see kind). The gateway has already authenticated Bot Framework, resolved the tenant to its StandIn connection, and decided this should be relayed (reserved bot commands are handled by the gateway and never arrive here)."
     fields:
       - name: schemaVersion
         type: int
         doc: "SCHEMA_VERSION at the time of sending."
       - name: tenantId
         type: string
-        doc: "The AUTHENTICATED Microsoft tenant id of the conversation. The agent may trust it; it is never taken from user input."
+        doc: "The AUTHENTICATED Microsoft tenant id of the conversation. Routing key of the whole managed tier - the agent may trust it; it is never taken from user input."
       - name: bindingId
         type: string
-        doc: "Id of the StandIn connection this conversation resolved to. Stable across messages for a tenant; useful for the agent's own per-customer state."
+        doc: "Id of the StandIn connection (binding) this conversation resolved to. Stable across messages for a tenant; useful for the agent's own per-customer state."
       - name: conversationId
         type: string
         doc: "Stable Teams conversation id. The agent MUST echo it back on every reply so the gateway can address the right chat."
@@ -133,13 +188,23 @@ types:
         type: string
         enum: ChatScope
         doc: "personal | groupChat | channel."
+      - name: kind
+        type: string
+        enum: InboundKind
+        default: message
+        doc: "message | meetingStart | meetingEnd (see InboundKind). Additive v1 field: absent means 'message', which is also how a queue row written before the field existed reads. An agent that does not know a value MUST treat it as 'message' rather than rejecting the delivery."
+      - name: meeting
+        type: object:MeetingEvent
+        optional: true
+        nullable: true
+        doc: "The meeting, on kind=meetingStart and kind=meetingEnd only. Absent on a message."
       - name: sender
         type: object:Sender
-        doc: "Authenticated sender identity."
+        doc: "Authenticated sender identity. On a meeting kind there is NO sender: the Teams lifecycle event names no principal, so every field arrives at its default rather than being filled with the bot's identity or a guessed organizer. Empty means empty."
       - name: text
         type: string
         default: ""
-        doc: "Message text as markdown, with the bot @mention already STRIPPED. In group/channel scope only mentioned messages are relayed. May be empty when the message carried only attachments."
+        doc: "Message text as markdown, with the bot @mention already STRIPPED (in group/channel scope the gateway only relays mentioned messages). May be empty when the message carried only attachments, and is ALWAYS empty on the meeting kinds - which is exactly what makes an unaware agent's 'ignore an empty message' path the safe degradation."
       - name: mentions
         type: array:string
         optional: true
@@ -160,17 +225,56 @@ types:
         doc: "Teams client locale of the sender (e.g. 'en-GB'), when reported. Useful for the multilingual answer requirement."
       - name: timestamp
         type: string
-        doc: "RFC3339 UTC instant the activity was received."
+        doc: "RFC3339 UTC instant the activity was received by the gateway."
+
+  OutboundImage:
+    doc: "An image the agent wants rendered INLINE in its reply, carried as bytes. Bytes and not a link because the alternative does not exist: an Image element inside `card` is refused by the gateway's card allowlist, both for remote hosts (an off-domain image loads with no click, so it is an IP-logging beacon under the StandIn bot's name, and its bytes can be swapped after the card was reviewed) and for data: URIs (which would bypass the host allowlist entirely). Those refusals stay. What makes bytes acceptable where a URL is not is that the gateway HOLDS them and can check what they actually are - and it does: the declared contentType must be on the raster allowlist AND the decoded bytes must begin with that type's own magic number, so an HTML document, an SVG or a polyglot labelled image/png is rejected. Anything that fails rejects the WHOLE message with the reason, never silently drops the picture out of the answer. Cap: 1 MB decoded."
+    fields:
+      - name: name
+        type: string
+        optional: true
+        nullable: true
+        doc: "Display/download filename. Optional - the gateway supplies one derived from contentType when it is absent, because Teams shows something either way and an empty name renders as a nameless attachment. Sanitized before use: one path-free segment, no control characters, bounded."
+      - name: contentType
+        type: string
+        doc: "One of image/png, image/jpeg, image/gif, image/webp. NOT a hint: the gateway rejects the message when the decoded bytes do not carry this type's signature. image/svg+xml is deliberately absent and is not a gap to be filled later - SVG is scriptable XML, which is precisely what 'an image' must not be."
+      - name: contentBase64
+        type: string
+        doc: "RAW base64 of the image - not a data: URI, not url-safe base64. The gateway re-encodes the DECODED bytes onto the wire, so what Teams renders is exactly what was validated rather than the string as sent."
+
+  OutboundFile:
+    doc: "A file the agent wants to send the user. NOT a message with bytes in it: Teams delivers a bot's file by ASKING first, so what lands in the chat is a file consent card, and the content moves only if the user accepts - into THEIR OneDrive, under their own credential, never the bot's. PERSONAL SCOPE ONLY, which is Teams' rule rather than StandIn's: `supportsFiles` is a personal-scope bot capability and there is no consent surface in a channel or a group chat, so the gateway rejects this field on any other scope with that reason instead of posting a card whose Accept button could never work. The bytes wait in the gateway's transient store, tenant-pinned and TTL'd, and are CONSUMED by whichever answer arrives first - so a decline leaves nothing behind and an accept cannot be replayed into a second upload. Cap: 4 MB decoded, the same number as the inbound attachment relay."
+    fields:
+      - name: name
+        type: string
+        doc: "Filename INCLUDING an extension - Teams derives the file's type from it, so a name without one is rejected rather than uploaded as an unopenable blob. Sanitized before it is shown or uploaded (last path segment only, no control characters, none of the characters Windows/SharePoint refuse, bounded with the extension preserved). Extensions that RUN when opened (.exe, .bat, .ps1, .js, ...) are refused: the file arrives under the StandIn bot's identity."
+      - name: contentType
+        type: string
+        optional: true
+        nullable: true
+        doc: "MIME type, when the agent knows one. Advisory only, and unlike an image's it is NOT checked against the bytes - there is no closed set of file types to check against, and the EXTENSION is what Teams and OneDrive actually act on, so that is what the gateway vets."
+      - name: sizeBytes
+        type: long
+        optional: true
+        doc: "Size in bytes, when the agent states one. The gateway uses the DECODED length regardless; a stated value that disagrees with it REJECTS the message, because the usual cause is a truncated payload and this number is what the user reads on the consent card before deciding."
+      - name: description
+        type: string
+        optional: true
+        nullable: true
+        doc: "The one line shown above Accept/Decline. Third-party free text: bounded and flattened by the gateway like every other forwarded string. Absent means the gateway writes a plain sentence naming the file - a consent card with no description is a yes/no question with no question."
+      - name: contentBase64
+        type: string
+        doc: "RAW base64 of the file, same rules as OutboundImage.contentBase64."
 
   OutboundMessage:
-    doc: "Outbound: a reply, a typing indicator, or an error to render. StandIn performs the actual Teams send; the agent never holds a bot credential."
+    doc: "agent -> gateway. A whole reply, a partial one (a progress line or a chunk of the answer so far), a typing indicator, or an error to render. The gateway performs the actual Teams send with the StandIn bot credential; the agent never holds one."
     fields:
       - name: schemaVersion
         type: int
         doc: "SCHEMA_VERSION at the time of sending."
       - name: tenantId
         type: string
-        doc: "MUST equal the tenantId of the inbound message being answered. A mismatch is REJECTED (cross-tenant leak guard)."
+        doc: "MUST equal the tenantId of the inbound message being answered. The gateway REJECTS a mismatch (cross-tenant leak guard) - this is the load-bearing check of the whole relay."
       - name: conversationId
         type: string
         doc: "The conversation to send into; echo the inbound value."
@@ -183,23 +287,33 @@ types:
         type: string
         enum: ReplyKind
         default: message
-        doc: "message | typing | error."
+        doc: "message | typing | progress | chunk | error."
       - name: text
         type: string
         optional: true
         nullable: true
-        doc: "Markdown to send. Required for kind=message and kind=error; ignored for kind=typing. Streaming is NOT v1: buffer and send whole messages."
+        doc: "Markdown to send. Required for kind=message, kind=error, kind=progress and kind=chunk; ignored for kind=typing. POLICY CHANGE, superseding v1's 'streaming is NOT v1: buffer and send whole messages': a long turn may now narrate itself with kind=progress and stream the answer as it is written with kind=chunk. BOTH partial kinds are CUMULATIVE and ephemeral - a chunk carries the whole answer so far, never a delta - and that is what makes them safe on a two-replica deployment: chunks for one conversation can land on either pod, so the sequence in managed_chat_stream resolves an out-of-order pair by keeping the higher one, a chunk dropped by the coalescer is simply superseded by the next, and no chunk can truncate the answer. Updates are coalesced to about one per second (the connector's stream-update allowance) and never queued, so an agent may emit per token and the gateway sends the newest state it has; the user sees the answer grow about once a second rather than token by token, because that is the rate Teams accepts. A partial is never the last word: the turn still ends with kind=message carrying the complete answer, and that message is the only one that gets the AI label, the feedback loop and a durable outbox row. The gateway finalises the stream with that message, and finalises it itself if the agent goes quiet, so the caller can never leave a spinner running."
       - name: card
         type: object
         optional: true
         nullable: true
-        doc: "An Adaptive Card payload to send instead of/alongside text. Cards are VALIDATED against an allowlist (schema version, no raw HTML, permitted action types, openUrl restricted to approved domains); a card that fails is rejected rather than forwarded."
+        doc: "An Adaptive Card payload to send instead of/alongside text. The gateway VALIDATES it against an allowlist (schema version, no raw HTML, permitted action types with openUrl restricted to its approved domains) and rejects the message rather than forwarding an unvetted card."
+      - name: image
+        type: object:OutboundImage
+        optional: true
+        nullable: true
+        doc: "An inline image to render in this message (see OutboundImage). Rides ALONGSIDE text and card rather than instead of them - a picture usually needs its sentence. Additive v1 field: a gateway that predates it ignores it, which means the text still arrives and the picture does not, so agents that care should say in words what the image shows."
+      - name: file
+        type: object:OutboundFile
+        optional: true
+        nullable: true
+        doc: "A file to OFFER the user (see OutboundFile). Unlike image this is a REQUEST, not content: what lands in the chat is a consent card and the bytes move only on an Accept. Cannot be combined with card or image - a file offer is its own message, because the consent card occupies the message's attachment slot and a picture beside a yes/no question makes it ambiguous what Accept is answering. Personal scope only; rejected elsewhere with that reason. Additive v1 field."
       - name: idempotencyKey
         type: string
         optional: true
         nullable: true
-        doc: "Agent-chosen key making a retried send safe. A duplicate (tenantId, conversationId, idempotencyKey) is dropped within the retention window."
+        doc: "Agent-chosen key making a retried send safe. The gateway drops a duplicate (tenantId, conversationId, idempotencyKey) within the outbox retention window."
       - name: systemNotice
         type: bool
         optional: true
-        doc: "Reserved for StandIn control-plane notices (retire, connected, consent revoked). Set only by StandIn on its own authenticated endpoint, never by an agent: the agent-facing reply route does not read it."
+        doc: "CONTROL-PLANE notice (retire, connected, consent revoked) rather than an agent reply. The delivery worker rechecks the binding before every send so a reply accepted before a retire cannot land after it; a notice is the opposite - the retire notice exists to ANNOUNCE the retire, so that recheck dead-lettered it every time and nobody was told. Set only by the StandIn control plane on its own authenticated endpoint, never by an agent: the agent-facing reply route does not read it."
